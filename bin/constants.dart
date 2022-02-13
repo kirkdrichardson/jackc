@@ -1,0 +1,31 @@
+enum TokenType {
+  keyword,
+  symbol,
+  identifier,
+  intConst,
+  stringConst,
+}
+
+enum Keyword {
+  $class,
+  $method,
+  $function,
+  $constructor,
+  $int,
+  $boolean,
+  $char,
+  $void,
+  $var,
+  $static,
+  $field,
+  $let,
+  $do,
+  $if,
+  $else,
+  $while,
+  $return,
+  $true,
+  $false,
+  $null,
+  $this,
+}

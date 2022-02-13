@@ -67,8 +67,6 @@ void main(List<String> arguments) async {
   }
 
   for (final file in _filesToTranslate) {
-    final tokenizer = Tokenizer();
-
     final pathSegments = file.path.split('/');
     final lastPathSegment = pathSegments.removeLast();
     pathSegments.add(lastPathSegment.replaceFirst(
@@ -76,6 +74,8 @@ void main(List<String> arguments) async {
 
     final output = File(pathSegments.join('/'));
     print('Translating ${file.path} to ${output.path}');
+
+    final tokenizer = Tokenizer(output);
 
     // TODO - use the tokenizer and compilation engine to parse the input
     // file and write the parsed code to the output file
