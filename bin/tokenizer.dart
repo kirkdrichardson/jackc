@@ -35,9 +35,58 @@ abstract class ITokenizer {
   String stringVal();
 }
 
-class Tokenizer {
-  final RandomAccessFile _raFile;
+class Tokenizer implements ITokenizer {
+  final String _fileContents;
 
   /// Opens the input .jack file and gets ready to tokenize it
-  Tokenizer(File f) : _raFile = f.openSync(mode: FileMode.write);
+  Tokenizer(File f) : _fileContents = f.readAsStringSync();
+
+  @override
+  void advance() {
+    // TODO: implement advance
+
+    print(_fileContents);
+  }
+
+  @override
+  bool hasMoreTokens() {
+    // TODO: implement hasMoreTokens
+    throw UnimplementedError();
+  }
+
+  @override
+  String identifier() {
+    // TODO: implement identifier
+    throw UnimplementedError();
+  }
+
+  @override
+  int intVal() {
+    // TODO: implement intVal
+    throw UnimplementedError();
+  }
+
+  @override
+  Keyword keyword() {
+    // TODO: implement keyword
+    throw UnimplementedError();
+  }
+
+  @override
+  String stringVal() {
+    // TODO: implement stringVal
+    throw UnimplementedError();
+  }
+
+  @override
+  String symbol() {
+    // TODO: implement symbol
+    throw UnimplementedError();
+  }
+
+  @override
+  TokenType tokenType() {
+    // TODO: implement tokenType
+    throw UnimplementedError();
+  }
 }

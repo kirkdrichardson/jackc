@@ -1,3 +1,5 @@
+import 'dart:io';
+
 abstract class ICompilationEngine {
   /// Compiles a complete class.
   void compileClass();
@@ -52,4 +54,9 @@ abstract class ICompilationEngine {
   int compileExpressionList();
 }
 
-class CompilationEngine {}
+class CompilationEngine {
+  final RandomAccessFile _raFile;
+
+  /// Opens the input .jack file and gets ready to tokenize it
+  CompilationEngine(File f) : _raFile = f.openSync(mode: FileMode.write);
+}
