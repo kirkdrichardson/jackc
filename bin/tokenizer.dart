@@ -35,24 +35,44 @@ abstract class ITokenizer {
   String stringVal();
 }
 
+// Expression to match doc comments, inline comments, and whitespace.
+const _exp = r'(\/\*(?:[^\*]|\**[^\*\/])*\*+\/)|((?<!")(?!.*";)\/\/.*)|(\s*)';
+final _regExp = RegExp(_exp, caseSensitive: false, multiLine: false);
+
 class Tokenizer implements ITokenizer {
   final String _fileContents;
+
+  /// The current token, beginning at _index
+  TokenType? _currentToken;
+
+  /// The current index of `_fileContents`.
+  int _index = 0;
+
+  RegExpMatch? getFirstMatch(int start) =>
+      _regExp.firstMatch(_fileContents.substring(start));
 
   /// Opens the input .jack file and gets ready to tokenize it
   Tokenizer(File f) : _fileContents = f.readAsStringSync();
 
   @override
   void advance() {
-    // TODO: implement advance
-
-    print(_fileContents);
+    if (hasMoreTokens()) {
+      // Move the index until we are at the next token
+      var match = getFirstMatch(_index);
+      while (match != null && match.start != match.end) {
+        // print("_fileContents[_index]: ${_fileContents[_index]} ");
+        _index += match.end;
+        // print("_index: _index");
+        // print("match.start: ${match.start}");
+        // print("match.end: ${match.end}");
+        match = getFirstMatch(_index);
+      }
+    }
   }
 
   @override
-  bool hasMoreTokens() {
-    // TODO: implement hasMoreTokens
-    throw UnimplementedError();
-  }
+  // todo - this should probably look ahead so as to not count whitespace
+  bool hasMoreTokens() => _index < _fileContents.length - 1;
 
   @override
   String identifier() {

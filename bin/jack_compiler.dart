@@ -79,6 +79,7 @@ void main(List<String> arguments) async {
     final tokenizer = Tokenizer(file);
     final raFile = output.openSync(mode: FileMode.write);
     while (tokenizer.hasMoreTokens()) {
+      tokenizer.advance();
       final currentToken = tokenizer.tokenType();
       String xmlOutput;
 
