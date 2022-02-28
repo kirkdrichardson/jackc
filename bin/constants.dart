@@ -29,3 +29,28 @@ enum Keyword {
   $null,
   $this,
 }
+
+const symbols = {
+  '(': true,
+  ')': true,
+  '{': true,
+  '}': true,
+  '[': true,
+  ']': true,
+  '.': true,
+  ',': true,
+  ';': true,
+  '+': true,
+  '-': true,
+  '*': true,
+  '/': true,
+  '&': true,
+  '|': true,
+  '"': true,
+  '<': true,
+  '>': true,
+  '=': true,
+  '~': true,
+};
+
+const keywords = {''};

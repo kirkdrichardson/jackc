@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'constants.dart';
+import 'exceptions.dart';
 
 abstract class ITokenizer {
   /// Are there more tokens in the input?
@@ -42,10 +43,13 @@ final _regExp = RegExp(_exp, caseSensitive: false, multiLine: false);
 class Tokenizer implements ITokenizer {
   final String _fileContents;
 
-  /// The current token, beginning at _index
-  TokenType? _currentToken;
+  /// The current token type
+  TokenType? _currentTokenType;
 
-  /// The current index of `_fileContents`.
+  /// The current token
+  String? _currentToken;
+
+  /// The current index of `_fileContents`, set to the start of `currentToken`
   int _index = 0;
 
   RegExpMatch? getFirstMatch(int start) =>
@@ -67,6 +71,21 @@ class Tokenizer implements ITokenizer {
         // print("match.end: ${match.end}");
         match = getFirstMatch(_index);
       }
+
+      final char = _fileContents[_index];
+
+      if (symbols.containsKey(char)) {
+        _currentTokenType = TokenType.symbol;
+        _currentToken = _fileContents[_index];
+        return;
+      }
+
+      if (int.tryParse(char) != null) {
+        _currentTokenType = TokenType.intConst;
+        _currentToken = RegExp(r'\d+')
+            .firstMatch(_fileContents.substring(_index))!
+            .group(0);
+      }
     }
   }
 
@@ -82,8 +101,11 @@ class Tokenizer implements ITokenizer {
 
   @override
   int intVal() {
-    // TODO: implement intVal
-    throw UnimplementedError();
+    if (_currentTokenType == TokenType.intConst) {
+      return int.parse(_currentToken!);
+    }
+
+    throw InvalidTokenTypeException(_currentTokenType, TokenType.intConst);
   }
 
   @override
@@ -99,10 +121,9 @@ class Tokenizer implements ITokenizer {
   }
 
   @override
-  String symbol() {
-    // TODO: implement symbol
-    throw UnimplementedError();
-  }
+  String symbol() => _currentTokenType == TokenType.symbol
+      ? _currentToken!
+      : throw InvalidTokenTypeException(_currentTokenType, TokenType.intConst);
 
   @override
   TokenType tokenType() {
