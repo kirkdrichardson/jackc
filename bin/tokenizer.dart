@@ -37,8 +37,13 @@ abstract class ITokenizer {
 }
 
 // Expression to match doc comments, inline comments, and whitespace.
-const _exp = r'(\/\*(?:[^\*]|\**[^\*\/])*\*+\/)|((?<!")(?!.*";)\/\/.*)|(\s*)';
-final _regExp = RegExp(_exp, caseSensitive: false, multiLine: false);
+const _commentsMatcher =
+    r'(\/\*(?:[^\*]|\**[^\*\/])*\*+\/)|((?<!")(?!.*";)\/\/.*)|(\s*)';
+final _commentsMatcherRegEx = RegExp(_commentsMatcher, caseSensitive: false);
+final _intConstMatcherRegEx = RegExp(r'\d+');
+const _keywordMatcher =
+    r'(class|constructor|function|method|field|static|var|int|char|boolean|void|true|false|null|this|let|do|if|else|while|return)';
+final _keywordMatcherRegEx = RegExp(_keywordMatcher, caseSensitive: true);
 
 class Tokenizer implements ITokenizer {
   final String _fileContents;
@@ -53,25 +58,33 @@ class Tokenizer implements ITokenizer {
   int _index = 0;
 
   RegExpMatch? getFirstMatch(int start) =>
-      _regExp.firstMatch(_fileContents.substring(start));
+      _commentsMatcherRegEx.firstMatch(_fileContents.substring(start));
 
   /// Opens the input .jack file and gets ready to tokenize it
   Tokenizer(File f) : _fileContents = f.readAsStringSync();
 
   @override
   void advance() {
-    if (hasMoreTokens()) {
-      // Move the index until we are at the next token
-      var match = getFirstMatch(_index);
-      while (match != null && match.start != match.end) {
-        // print("_fileContents[_index]: ${_fileContents[_index]} ");
-        _index += match.end;
-        // print("_index: _index");
-        // print("match.start: ${match.start}");
-        // print("match.end: ${match.end}");
-        match = getFirstMatch(_index);
-      }
+    // Move past and clear the current token if defined.
+    if (_currentToken != null) {
+      _index += _currentToken!.length;
+      _currentToken = null;
+    }
 
+    // Move past any comments or non-semantic whitespace.
+    var commentOrWhitespaceMatch = getFirstMatch(_index);
+    while (commentOrWhitespaceMatch != null &&
+        commentOrWhitespaceMatch.start != commentOrWhitespaceMatch.end) {
+      // print("_fileContents[_index]: ${_fileContents[_index]} ");
+      _index += commentOrWhitespaceMatch.end;
+      // print("_index: _index");
+      // print("match.start: ${match.start}");
+      // print("match.end: ${match.end}");
+      commentOrWhitespaceMatch = getFirstMatch(_index);
+    }
+
+    // If there are additional tokens, parse them.
+    if (hasMoreTokens()) {
       final char = _fileContents[_index];
 
       if (symbols.containsKey(char)) {
@@ -82,10 +95,22 @@ class Tokenizer implements ITokenizer {
 
       if (int.tryParse(char) != null) {
         _currentTokenType = TokenType.intConst;
-        _currentToken = RegExp(r'\d+')
+        _currentToken = _intConstMatcherRegEx
             .firstMatch(_fileContents.substring(_index))!
             .group(0);
       }
+
+      final keywordMatch =
+          _keywordMatcherRegEx.firstMatch(_fileContents.substring(_index));
+      if (keywordMatch != null) {
+        _currentTokenType = TokenType.keyword;
+        _currentToken = keywordMatch.group(0);
+      }
+
+      // print(_currentTokenType);
+      // print(_currentToken);
+    } else {
+      throw Exception('No tokens remaining. Cannot advance');
     }
   }
 
@@ -99,19 +124,22 @@ class Tokenizer implements ITokenizer {
     throw UnimplementedError();
   }
 
+  void _checkTokenTypeIsCurrent(TokenType type) {
+    if (type != _currentTokenType) {
+      throw InvalidTokenTypeException(_currentTokenType, type);
+    }
+  }
+
   @override
   int intVal() {
-    if (_currentTokenType == TokenType.intConst) {
-      return int.parse(_currentToken!);
-    }
-
-    throw InvalidTokenTypeException(_currentTokenType, TokenType.intConst);
+    _checkTokenTypeIsCurrent(TokenType.intConst);
+    return int.parse(_currentToken!);
   }
 
   @override
   Keyword keyword() {
-    // TODO: implement keyword
-    throw UnimplementedError();
+    _checkTokenTypeIsCurrent(TokenType.keyword);
+    return getKeywordFromString(Keyword.values, _currentToken!);
   }
 
   @override
@@ -121,13 +149,11 @@ class Tokenizer implements ITokenizer {
   }
 
   @override
-  String symbol() => _currentTokenType == TokenType.symbol
-      ? _currentToken!
-      : throw InvalidTokenTypeException(_currentTokenType, TokenType.intConst);
+  String symbol() {
+    _checkTokenTypeIsCurrent(TokenType.symbol);
+    return _currentToken!;
+  }
 
   @override
-  TokenType tokenType() {
-    // TODO: implement tokenType
-    throw UnimplementedError();
-  }
+  TokenType tokenType() => _currentTokenType!;
 }

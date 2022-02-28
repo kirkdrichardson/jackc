@@ -30,6 +30,15 @@ enum Keyword {
   $this,
 }
 
+extension Value on Keyword {
+  /// Returns the valid string representation of a [Keyword].
+  String value() => toString().replaceFirst(r'Keyword.$', '');
+}
+
+/// Returns a [Keyword] for a valid string representation, such as "if" or "class".
+Keyword getKeywordFromString(List<Keyword> values, String asString) =>
+    values.firstWhere((kw) => kw.value() == asString);
+
 const symbols = {
   '(': true,
   ')': true,
@@ -52,5 +61,3 @@ const symbols = {
   '=': true,
   '~': true,
 };
-
-const keywords = {''};

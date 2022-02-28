@@ -92,7 +92,8 @@ void main(List<String> arguments) async {
               '<integerConstant>${tokenizer.intVal()}</integerConstant>';
           break;
         case TokenType.keyword:
-          xmlOutput = '<keyword>${tokenizer.keyword()}</keyword>';
+          // todo - we could probably have tokenizer.keyword return the value directly
+          xmlOutput = '<keyword>${tokenizer.keyword().value()}</keyword>';
           break;
         case TokenType.stringConst:
           xmlOutput =
@@ -105,12 +106,12 @@ void main(List<String> arguments) async {
           throw Exception('Unkown token type: $currentToken');
       }
 
+      print(xmlOutput);
+
       raFile.writeStringSync(xmlOutput + '\n');
     }
 
-    tokenizer.advance();
-
-    // TODO - use the tokenizer and compilation engine to parse the input
+    // todo - use the tokenizer and compilation engine to parse the input
     // file and write the parsed code to the output file
   }
 }
