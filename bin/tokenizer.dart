@@ -24,15 +24,15 @@ abstract class ITokenizer {
   String symbol();
 
   /// Returns the string which is the current token.
-  /// Should be callsed only if [tokenType] is a [TokenType.identifier].
+  /// Should be called only if [tokenType] is a [TokenType.identifier].
   String identifier();
 
   /// Returns the integer value of the current token.
-  /// Should be callsed only if [tokenType] is a [TokenType.intConst].
+  /// Should be called only if [tokenType] is a [TokenType.intConst].
   int intVal();
 
   /// Returns the string value of the current token, whithout the opening and closing quotes.
-  /// Should be callsed only if [tokenType] is a [TokenType.stringConst].
+  /// Should be called only if [tokenType] is a [TokenType.stringConst].
   String stringVal();
 }
 
@@ -53,25 +53,6 @@ class Tokenizer implements ITokenizer {
 
   @override
   void advance() {
-    // Move past and clear the current token if defined.
-    if (_currentToken != null) {
-      _index += _currentToken!.length;
-      _currentToken = null;
-    }
-
-    // Move past any comments or non-semantic whitespace.
-    var commentOrWhitespaceMatch = _getFirstMatch(_commentsMatcherRegEx);
-    while (commentOrWhitespaceMatch != null &&
-        commentOrWhitespaceMatch.start != commentOrWhitespaceMatch.end) {
-      // print("_fileContents[_index]: ${_fileContents[_index]} ");
-      _index += commentOrWhitespaceMatch.end;
-      // print("_index: _index");
-      // print("match.start: ${match.start}");
-      // print("match.end: ${match.end}");
-      commentOrWhitespaceMatch = _getFirstMatch(_commentsMatcherRegEx);
-    }
-
-    // If there are additional tokens, parse them.
     if (hasMoreTokens()) {
       final char = _fileContents[_index];
 
@@ -112,17 +93,34 @@ class Tokenizer implements ITokenizer {
       }
 
       throw Exception('Unmatched character: $char');
-
-      // print(_currentTokenType);
-      // print(_currentToken);
     } else {
       throw Exception('No tokens remaining. Cannot advance');
     }
   }
 
+  // todo - reconsider this operation having the side effect of clearing the current token.
+  // Or, perhaps, make this method private and have the advance function return a bool
+
+  /// Returns true if more tokens are present, clears the current token, and
+  /// advances beyond any non-sematic whitespace.
   @override
-  // todo - this should probably look ahead so as to not count whitespace
-  bool hasMoreTokens() => _index < _fileContents.length - 1;
+  bool hasMoreTokens() {
+    // Move past and clear the current token if defined.
+    if (_currentToken != null) {
+      _index += _currentToken!.length;
+      _currentToken = null;
+    }
+
+    // Move past any comments or non-semantic whitespace.
+    var commentOrWhitespaceMatch = _getFirstMatch(_commentsMatcherRegEx);
+    while (commentOrWhitespaceMatch != null &&
+        commentOrWhitespaceMatch.start != commentOrWhitespaceMatch.end) {
+      _index += commentOrWhitespaceMatch.end;
+      commentOrWhitespaceMatch = _getFirstMatch(_commentsMatcherRegEx);
+    }
+
+    return _index < _fileContents.length - 1;
+  }
 
   @override
   String identifier() {
