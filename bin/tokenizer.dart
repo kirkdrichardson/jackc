@@ -36,15 +36,6 @@ abstract class ITokenizer {
   String stringVal();
 }
 
-// Expression to match doc comments, inline comments, and whitespace.
-const _commentsMatcher =
-    r'(\/\*(?:[^\*]|\**[^\*\/])*\*+\/)|((?<!")(?!.*";)\/\/.*)|(\s*)';
-final _commentsMatcherRegEx = RegExp(_commentsMatcher, caseSensitive: false);
-final _intConstMatcherRegEx = RegExp(r'\d+');
-const _keywordMatcher =
-    r'(class|constructor|function|method|field|static|var|int|char|boolean|void|true|false|null|this|let|do|if|else|while|return)';
-final _keywordMatcherRegEx = RegExp(_keywordMatcher, caseSensitive: true);
-
 class Tokenizer implements ITokenizer {
   final String _fileContents;
 
@@ -56,9 +47,6 @@ class Tokenizer implements ITokenizer {
 
   /// The current index of `_fileContents`, set to the start of `currentToken`
   int _index = 0;
-
-  RegExpMatch? getFirstMatch(int start) =>
-      _commentsMatcherRegEx.firstMatch(_fileContents.substring(start));
 
   /// Opens the input .jack file and gets ready to tokenize it
   Tokenizer(File f) : _fileContents = f.readAsStringSync();
@@ -72,7 +60,7 @@ class Tokenizer implements ITokenizer {
     }
 
     // Move past any comments or non-semantic whitespace.
-    var commentOrWhitespaceMatch = getFirstMatch(_index);
+    var commentOrWhitespaceMatch = _getFirstMatch(_commentsMatcherRegEx);
     while (commentOrWhitespaceMatch != null &&
         commentOrWhitespaceMatch.start != commentOrWhitespaceMatch.end) {
       // print("_fileContents[_index]: ${_fileContents[_index]} ");
@@ -80,7 +68,7 @@ class Tokenizer implements ITokenizer {
       // print("_index: _index");
       // print("match.start: ${match.start}");
       // print("match.end: ${match.end}");
-      commentOrWhitespaceMatch = getFirstMatch(_index);
+      commentOrWhitespaceMatch = _getFirstMatch(_commentsMatcherRegEx);
     }
 
     // If there are additional tokens, parse them.
@@ -98,6 +86,7 @@ class Tokenizer implements ITokenizer {
         _currentToken = _intConstMatcherRegEx
             .firstMatch(_fileContents.substring(_index))!
             .group(0);
+        return;
       }
 
       final keywordMatch =
@@ -105,7 +94,24 @@ class Tokenizer implements ITokenizer {
       if (keywordMatch != null) {
         _currentTokenType = TokenType.keyword;
         _currentToken = keywordMatch.group(0);
+        return;
       }
+
+      final stringMatch = _getFirstMatch(_stringMatcherRegEx);
+      if (stringMatch != null) {
+        _currentTokenType = TokenType.stringConst;
+        _currentToken = stringMatch.group(0);
+        return;
+      }
+
+      final identifierMatch = _getFirstMatch(_identifierMatcherRegEx);
+      if (identifierMatch != null) {
+        _currentTokenType = TokenType.identifier;
+        _currentToken = identifierMatch.group(0);
+        return;
+      }
+
+      throw Exception('Unmatched character: $char');
 
       // print(_currentTokenType);
       // print(_currentToken);
@@ -120,14 +126,8 @@ class Tokenizer implements ITokenizer {
 
   @override
   String identifier() {
-    // TODO: implement identifier
-    throw UnimplementedError();
-  }
-
-  void _checkTokenTypeIsCurrent(TokenType type) {
-    if (type != _currentTokenType) {
-      throw InvalidTokenTypeException(_currentTokenType, type);
-    }
+    _checkTokenTypeIsCurrent(TokenType.identifier);
+    return _currentToken!;
   }
 
   @override
@@ -144,8 +144,9 @@ class Tokenizer implements ITokenizer {
 
   @override
   String stringVal() {
-    // TODO: implement stringVal
-    throw UnimplementedError();
+    _checkTokenTypeIsCurrent(TokenType.stringConst);
+    // Return the literal value, without quotations.
+    return _currentToken!.substring(1, _currentToken!.length - 1);
   }
 
   @override
@@ -156,4 +157,33 @@ class Tokenizer implements ITokenizer {
 
   @override
   TokenType tokenType() => _currentTokenType!;
+
+  /// Throws [InvalidTokenTypeException] if [type] doesn't equal [_currentTokenType].
+  void _checkTokenTypeIsCurrent(TokenType type) {
+    if (type != _currentTokenType) {
+      throw InvalidTokenTypeException(_currentTokenType, type);
+    }
+  }
+
+  /// Returns the first match or null for [re] applied to [_fileContents]
+  /// beginning at [index].
+  RegExpMatch? _getFirstMatch(RegExp re) =>
+      re.firstMatch(_fileContents.substring(_index));
 }
+
+//*****************************************************************************
+// Private utilities
+//*****************************************************************************
+
+// Expression to match doc comments, inline comments, and whitespace.
+const _commentsMatcher =
+    r'(\/\*(?:[^\*]|\**[^\*\/])*\*+\/)|((?<!")(?!.*";)\/\/.*)|(\s*)';
+final _commentsMatcherRegEx = RegExp(_commentsMatcher, caseSensitive: false);
+final _intConstMatcherRegEx = RegExp(r'\d+');
+const _keywordMatcher =
+    r'(class|constructor|function|method|field|static|var|int|char|boolean|void|true|false|null|this|let|do|if|else|while|return)';
+final _keywordMatcherRegEx = RegExp(_keywordMatcher, caseSensitive: true);
+const _identifierMatcher = r'[_a-zA-z].*';
+final _identifierMatcherRegEx = RegExp(_identifierMatcher);
+const _stringMatcher = r'".*"';
+final _stringMatcherRegEx = RegExp(_stringMatcher);
