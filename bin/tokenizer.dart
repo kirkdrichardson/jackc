@@ -177,13 +177,13 @@ class Tokenizer implements ITokenizer {
 
 // Expression to match doc comments, inline comments, and whitespace.
 const _commentsMatcher =
-    r'(\/\*(?:[^\*]|\**[^\*\/])*\*+\/)|((?<!")(?!.*";)\/\/.*)|(\s*)';
+    r'^(\/\*(?:[^\*]|\**[^\*\/])*\*+\/)|((?<!")(?!.*";)\/\/.*)|(\s*)';
 final _commentsMatcherRegEx = RegExp(_commentsMatcher, caseSensitive: false);
-final _intConstMatcherRegEx = RegExp(r'\d+');
+final _intConstMatcherRegEx = RegExp(r'^\d+');
 const _keywordMatcher =
-    r'(class|constructor|function|method|field|static|var|int|char|boolean|void|true|false|null|this|let|do|if|else|while|return)';
+    r'^(class|constructor|function|method|field|static|var|int|char|boolean|void|true|false|null|this|let|do|if|else|while|return)';
 final _keywordMatcherRegEx = RegExp(_keywordMatcher, caseSensitive: true);
-const _identifierMatcher = r'[_a-zA-z].*';
+const _identifierMatcher = r'^[_a-zA-z]*';
 final _identifierMatcherRegEx = RegExp(_identifierMatcher);
-const _stringMatcher = r'".*"';
+const _stringMatcher = r'^".*"';
 final _stringMatcherRegEx = RegExp(_stringMatcher);
