@@ -61,3 +61,11 @@ const symbols = {
   '=': true,
   '~': true,
 };
+
+/// Symbol to html entity map for characters for use in xml translation
+const specialSymbols = {
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  '&': '&amp;',
+};

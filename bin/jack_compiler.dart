@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'constants.dart';
+import 'compilation_engine.dart';
 import 'tokenizer.dart';
 
 /// Usage: `dart jack_compiler {source}` where source is an optional path of either a file
@@ -74,44 +74,8 @@ void main(List<String> arguments) async {
         '.jack', '.xml', lastPathSegment.length - 5));
 
     final output = File(pathSegments.join('/'));
-    print('Translating ${file.path} to ${output.path}');
+    // print('Translating ${file.path} to ${output.path}');
 
-    final tokenizer = Tokenizer(file);
-    final raFile = output.openSync(mode: FileMode.write);
-    while (tokenizer.hasMoreTokens()) {
-      tokenizer.advance();
-      final currentToken = tokenizer.tokenType();
-      String xmlOutput;
-
-      switch (currentToken) {
-        case TokenType.identifier:
-          xmlOutput = '<identifier>${tokenizer.identifier()}</identifier>';
-          break;
-        case TokenType.intConst:
-          xmlOutput =
-              '<integerConstant>${tokenizer.intVal()}</integerConstant>';
-          break;
-        case TokenType.keyword:
-          // todo - we could probably have tokenizer.keyword return the value directly
-          xmlOutput = '<keyword>${tokenizer.keyword().value()}</keyword>';
-          break;
-        case TokenType.stringConst:
-          xmlOutput =
-              '<stringConstant>${tokenizer.stringVal()}</stringConstant>';
-          break;
-        case TokenType.symbol:
-          xmlOutput = '<symbol>${tokenizer.symbol()}</symbol>';
-          break;
-        default:
-          throw Exception('Unkown token type: $currentToken');
-      }
-
-      print(xmlOutput);
-
-      raFile.writeStringSync(xmlOutput + '\n');
-    }
-
-    // todo - use the tokenizer and compilation engine to parse the input
-    // file and write the parsed code to the output file
+    CompilationEngine(Tokenizer(file), output).compileClass();
   }
 }
