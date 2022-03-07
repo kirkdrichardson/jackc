@@ -70,10 +70,8 @@ const specialSymbols = {
   '&': '&amp;',
 };
 
-const _types = {
-  'int': true,
-  'boolean': true,
-  'char': true,
-};
-
-bool isType(String token) => _types[token] ?? false;
+const types = [
+  'int',
+  'boolean',
+  'char',
+];
