@@ -7,31 +7,38 @@ abstract class ITokenizer {
   /// Are there more tokens in the input?
   bool hasMoreTokens();
 
-  /// Gets the next token from the input, and makes it the current token.
+  /// Returns the next token from the input, and makes it the current token.
+  ///
   /// This method should be called only if [hasMoreTokens] is true.
   /// Initially there is no current token.
-  void advance();
+  String advance();
 
   /// Returns the [TokenType] of the current token, as a constant.
   TokenType tokenType();
 
   /// Returns the [Keyword] which is the current token, as a constant.
+  ///
   /// This method should be called only if [tokenType] is a [TokenType.keyword].
   Keyword keyword();
 
   /// Returns the character which is the current token.
+  ///
   /// Should be called only if [tokenType] is a [TokenType.symbol].
   String symbol();
 
   /// Returns the string which is the current token.
+  ///
   /// Should be called only if [tokenType] is a [TokenType.identifier].
   String identifier();
 
   /// Returns the integer value of the current token.
+  ///
   /// Should be called only if [tokenType] is a [TokenType.intConst].
   int intVal();
 
-  /// Returns the string value of the current token, whithout the opening and closing quotes.
+  /// Returns the string value of the current token, without the opening and
+  /// closing quotes.
+  ///
   /// Should be called only if [tokenType] is a [TokenType.stringConst].
   String stringVal();
 }
@@ -51,15 +58,17 @@ class Tokenizer implements ITokenizer {
   /// Opens the input .jack file and gets ready to tokenize it
   Tokenizer(File f) : _fileContents = f.readAsStringSync();
 
+  // todo - consider returning boolean if advanced and making hasMoreTokens a
+  // a private method, or fold it into the advance method
   @override
-  void advance() {
+  String advance() {
     if (hasMoreTokens()) {
       final char = _fileContents[_index];
 
       if (symbols.containsKey(char)) {
         _currentTokenType = TokenType.symbol;
         _currentToken = _fileContents[_index];
-        return;
+        return _currentToken!;
       }
 
       if (int.tryParse(char) != null) {
@@ -67,7 +76,7 @@ class Tokenizer implements ITokenizer {
         _currentToken = _intConstMatcherRegEx
             .firstMatch(_fileContents.substring(_index))!
             .group(0);
-        return;
+        return _currentToken!;
       }
 
       final keywordMatch =
@@ -75,21 +84,21 @@ class Tokenizer implements ITokenizer {
       if (keywordMatch != null) {
         _currentTokenType = TokenType.keyword;
         _currentToken = keywordMatch.group(0);
-        return;
+        return _currentToken!;
       }
 
       final stringMatch = _getFirstMatch(_stringMatcherRegEx);
       if (stringMatch != null) {
         _currentTokenType = TokenType.stringConst;
         _currentToken = stringMatch.group(0);
-        return;
+        return _currentToken!;
       }
 
       final identifierMatch = _getFirstMatch(_identifierMatcherRegEx);
       if (identifierMatch != null) {
         _currentTokenType = TokenType.identifier;
         _currentToken = identifierMatch.group(0);
-        return;
+        return _currentToken!;
       }
 
       throw Exception('Unmatched character: $char');

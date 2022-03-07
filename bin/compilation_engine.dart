@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'constants.dart';
+import 'exceptions.dart';
 import 'tokenizer.dart';
 
 abstract class ICompilationEngine {
@@ -60,60 +61,76 @@ abstract class ICompilationEngine {
 class CompilationEngine implements ICompilationEngine {
   final Tokenizer tokenizer;
   final RandomAccessFile _raFile;
+  String _currentToken;
+
+  TokenType get tokenType => tokenizer.tokenType();
 
   /// Opens the input .jack file and gets ready to tokenize it
   CompilationEngine(this.tokenizer, File outputFile)
-      : _raFile = outputFile.openSync(mode: FileMode.write);
+      : _raFile = outputFile.openSync(mode: FileMode.write),
+        _currentToken = tokenizer.advance();
 
   @override
   void compileClass() {
-    // TODO: implement compileClass
-
-    // final raFile = output.openSync(mode: FileMode.write);
-
-    while (tokenizer.hasMoreTokens()) {
-      tokenizer.advance();
-      final currentToken = tokenizer.tokenType();
-
-      String xmlOutput;
-
-      switch (currentToken) {
-        case TokenType.identifier:
-          xmlOutput = '<identifier>${tokenizer.identifier()}</identifier>';
-          break;
-        case TokenType.intConst:
-          xmlOutput =
-              '<integerConstant>${tokenizer.intVal()}</integerConstant>';
-          break;
-        case TokenType.keyword:
-          // todo - we could probably have tokenizer.keyword return the value directly
-          xmlOutput = '<keyword>${tokenizer.keyword().value()}</keyword>';
-          break;
-        case TokenType.stringConst:
-          xmlOutput =
-              '<stringConstant>${tokenizer.stringVal()}</stringConstant>';
-          break;
-        case TokenType.symbol:
-          final xmlSymbol =
-              specialSymbols[tokenizer.symbol()] ?? tokenizer.symbol();
-          xmlOutput = '<symbol>$xmlSymbol</symbol>';
-          break;
-        default:
-          throw Exception('Unkown token type: $currentToken');
-      }
-
-      _raFile.writeStringSync(xmlOutput + '\n');
+    _writeLn('<class>');
+    _process('class');
+    if (tokenizer.tokenType() != TokenType.identifier) {
+      throw Exception(
+          'Expected class var declaration but got "$_currentToken"');
     }
+    // Write the class name.
+    _writeXMLToken();
+    _currentToken = tokenizer.advance();
+    _process('{');
 
+    // TODO: HANDLE 0 OR MORE INSTANCES OF THIS.
+    compileClassVarDec();
+
+    // TODO: HANDLE 0 OR MORE INSTANCES OF THIS.
+    compileSubroutine();
+    _process('}');
     _raFile.closeSync();
-
-    // todo - use the tokenizer and compilation engine to parse the input
-    // file and write the parsed code to the output file
   }
 
   @override
   void compileClassVarDec() {
     // TODO: implement compileClassVarDec
+
+    String? tokenToProcess;
+
+    if (_currentToken == 'field') {
+      tokenToProcess = 'field';
+    } else if (_currentToken == 'static') {
+      tokenToProcess = 'static';
+    } else {
+      // Do nothing if we don't have a class var declaration.
+      return;
+    }
+
+    _writeLn('<classVarDec>');
+    _process(tokenToProcess);
+
+    if (tokenType == TokenType.identifier) {
+      // Here we _assume_ an identifier is a valid class name.
+      _process(_currentToken);
+    } else if (tokenType == TokenType.keyword) {
+      if (isType(_currentToken)) {
+        _process(_currentToken);
+      } else {
+        throw InvalidTypeException(_currentToken);
+      }
+    }
+
+    if (tokenType == TokenType.identifier) {
+      _process(_currentToken);
+    } else {
+      throw InvalidIdentifierException(_currentToken);
+    }
+
+    // TODO: SUPPORT MULTIPLE INLINE VAR DECLARATIONS
+
+    _process(';');
+    _writeLn('</classVarDec>');
   }
 
   @override
@@ -160,6 +177,7 @@ class CompilationEngine implements ICompilationEngine {
   @override
   void compileSubroutine() {
     // TODO: implement compileSubroutine
+    _writeLn('TODO - compileClassVarDec');
   }
 
   @override
@@ -180,5 +198,56 @@ class CompilationEngine implements ICompilationEngine {
   @override
   void compileWhile() {
     // TODO: implement compileWhile
+  }
+
+//******************************************************************************
+// Utilities
+//******************************************************************************
+
+  _process(String token) {
+    if (_currentToken == token) {
+      _writeXMLToken();
+    } else {
+      throw Exception('Syntax error - expected $token but got $_currentToken');
+    }
+
+    _currentToken = tokenizer.advance();
+  }
+
+  void _writeXMLToken() {
+    final currentToken = tokenizer.tokenType();
+
+    String xmlOutput;
+
+    switch (currentToken) {
+      case TokenType.identifier:
+        xmlOutput = '<identifier> ${tokenizer.identifier()} </identifier>';
+        break;
+      case TokenType.intConst:
+        xmlOutput =
+            '<integerConstant> ${tokenizer.intVal()} </integerConstant>';
+        break;
+      case TokenType.keyword:
+        // todo - we could probably have tokenizer.keyword return the value directly
+        xmlOutput = '<keyword> ${tokenizer.keyword().value()} </keyword>';
+        break;
+      case TokenType.stringConst:
+        xmlOutput =
+            '<stringConstant> ${tokenizer.stringVal()} </stringConstant>';
+        break;
+      case TokenType.symbol:
+        final xmlSymbol =
+            specialSymbols[tokenizer.symbol()] ?? tokenizer.symbol();
+        xmlOutput = '<symbol> $xmlSymbol </symbol>';
+        break;
+      default:
+        throw Exception('Unknown token type: $currentToken');
+    }
+
+    _writeLn(xmlOutput);
+  }
+
+  void _writeLn(String str) {
+    _raFile.writeStringSync(str + '\n');
   }
 }
