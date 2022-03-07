@@ -77,10 +77,11 @@ class CompilationEngine implements ICompilationEngine {
   void compileClass() {
     _writeLn('<class>');
     _process('class');
-    if (tokenizer.tokenType() != TokenType.identifier) {
-      throw Exception(
+    if (tokenType != TokenType.identifier) {
+      throw InvalidIdentifierException(
           'Expected class var declaration but got "$_currentToken"');
     }
+
     // Write the class name.
     _writeXMLToken();
     _currentToken = tokenizer.advance();
@@ -98,31 +99,13 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileClassVarDec() {
-    // Do we have a field or static var?
-    String? tokenToProcess;
-    if (_currentToken == 'field') {
-      tokenToProcess = 'field';
-    } else if (_currentToken == 'static') {
-      tokenToProcess = 'static';
-    } else {
-      // Do nothing if we don't have a class var declaration.
+    final tokenToProcess = _selectTokenToProcess(['field', 'static']);
+    if (tokenToProcess == null) {
       return;
     }
-
     _writeLn('<classVarDec>');
     _process(tokenToProcess);
-
-    if (tokenType == TokenType.identifier) {
-      // Here we _assume_ an identifier is a valid class name.
-      _process(_currentToken);
-    } else if (tokenType == TokenType.keyword) {
-      if (isType(_currentToken)) {
-        _process(_currentToken);
-      } else {
-        throw InvalidTypeException(_currentToken);
-      }
-    }
-
+    _processType();
     _processIdentifierOrThrow();
 
     // Support multiple inline var declarations, such as "field int foo, bar;"
@@ -131,9 +114,6 @@ class CompilationEngine implements ICompilationEngine {
       _process(_currentToken);
       _processIdentifierOrThrow();
     }
-
-    // TODO: SUPPORT MULTIPLE INLINE VAR DECLARATIONS
-
     _process(';');
     _writeLn('</classVarDec>');
   }
@@ -166,7 +146,15 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileParameterList() {
-    // TODO: implement compileParameterList
+    _writeLn('<parameterList>');
+    while (_currentToken != ')') {
+      _processType();
+      _processIdentifierOrThrow();
+      if (_currentToken == ',') {
+        _process(',');
+      }
+    }
+    _writeLn('</parameterList>');
   }
 
   @override
@@ -181,8 +169,30 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileSubroutine() {
+    final tokenToProcess =
+        _selectTokenToProcess(['constructor', 'function', 'method']);
+    if (tokenToProcess == null) {
+      return;
+    }
+
+    _writeLn('<subroutineDec>');
+    _process(tokenToProcess);
+
+    if (_currentToken == 'void') {
+      _process(_currentToken);
+    } else {
+      _processType();
+    }
+
+    _processIdentifierOrThrow();
+    _process('(');
+
+    compileParameterList();
+    _process(')');
+
     // TODO: implement compileSubroutine
-    _writeLn('TODO - compileClassVarDec');
+
+    _writeLn('</subroutineDec>');
   }
 
   @override
@@ -225,6 +235,36 @@ class CompilationEngine implements ICompilationEngine {
     } else {
       throw InvalidIdentifierException(_currentToken);
     }
+  }
+
+  /// Processes the current type or throws an exception if  [_currentToken] is
+  /// not a valid type.
+  void _processType() {
+    if (_isType()) {
+      _process(_currentToken);
+    } else {
+      throw InvalidTypeException(_currentToken);
+    }
+  }
+
+  /// A utility to determine if the [_currentToken] is a valid type.
+  ///
+  /// Note that if the [_currentToken] is a [TokenType.identifier], it is assumed
+  /// that it is a valid class name.
+  bool _isType() =>
+      (tokenType == TokenType.identifier) ||
+      (tokenType == TokenType.keyword && types.contains(_currentToken));
+
+  /// From a list of valid tokens, returns the token to process, or null if
+  /// none were valid.
+  String? _selectTokenToProcess(List<String> validTokens) {
+    for (final token in validTokens) {
+      if (_currentToken == token) {
+        return token;
+      }
+    }
+
+    return null;
   }
 
   void _writeXMLToken() {
