@@ -4,8 +4,11 @@ import 'constants.dart';
 import 'exceptions.dart';
 import 'tokenizer.dart';
 
+// TODO: make all fields private and just expose a compile() method.
 abstract class ICompilationEngine {
   /// Compiles a complete class.
+  ///
+  /// Should be the first and only method called.
   void compileClass();
 
   /// Compiles a static variable declaration or a field declaration.
@@ -83,8 +86,9 @@ class CompilationEngine implements ICompilationEngine {
     _currentToken = tokenizer.advance();
     _process('{');
 
-    // TODO: HANDLE 0 OR MORE INSTANCES OF THIS.
-    compileClassVarDec();
+    do {
+      compileClassVarDec();
+    } while (_currentToken == 'field' || _currentToken == 'static');
 
     // TODO: HANDLE 0 OR MORE INSTANCES OF THIS.
     compileSubroutine();
@@ -94,10 +98,8 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileClassVarDec() {
-    // TODO: implement compileClassVarDec
-
+    // Do we have a field or static var?
     String? tokenToProcess;
-
     if (_currentToken == 'field') {
       tokenToProcess = 'field';
     } else if (_currentToken == 'static') {
@@ -121,10 +123,13 @@ class CompilationEngine implements ICompilationEngine {
       }
     }
 
-    if (tokenType == TokenType.identifier) {
+    _processIdentifierOrThrow();
+
+    // Support multiple inline var declarations, such as "field int foo, bar;"
+    bool hasAdditionalVars() => _currentToken == ',';
+    while (hasAdditionalVars()) {
       _process(_currentToken);
-    } else {
-      throw InvalidIdentifierException(_currentToken);
+      _processIdentifierOrThrow();
     }
 
     // TODO: SUPPORT MULTIPLE INLINE VAR DECLARATIONS
@@ -212,6 +217,14 @@ class CompilationEngine implements ICompilationEngine {
     }
 
     _currentToken = tokenizer.advance();
+  }
+
+  _processIdentifierOrThrow() {
+    if (tokenType == TokenType.identifier) {
+      _process(_currentToken);
+    } else {
+      throw InvalidIdentifierException(_currentToken);
+    }
   }
 
   void _writeXMLToken() {
