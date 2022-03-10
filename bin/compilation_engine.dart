@@ -91,9 +91,12 @@ class CompilationEngine implements ICompilationEngine {
       compileClassVarDec();
     } while (_currentToken == 'field' || _currentToken == 'static');
 
-    // TODO: HANDLE 0 OR MORE INSTANCES OF THIS.
-    compileSubroutine();
+    do {
+      compileSubroutine();
+    } while (
+        _selectTokenToProcess(['constructor', 'function', 'method']) != null);
     _process('}');
+    _writeLn('</class>');
     _raFile.closeSync();
   }
 
@@ -104,17 +107,7 @@ class CompilationEngine implements ICompilationEngine {
       return;
     }
     _writeLn('<classVarDec>');
-    _process(tokenToProcess);
-    _processType();
-    _processIdentifierOrThrow();
-
-    // Support multiple inline var declarations, such as "field int foo, bar;"
-    bool hasAdditionalVars() => _currentToken == ',';
-    while (hasAdditionalVars()) {
-      _process(_currentToken);
-      _processIdentifierOrThrow();
-    }
-    _process(';');
+    _processVarDec(tokenToProcess);
     _writeLn('</classVarDec>');
   }
 
@@ -149,7 +142,7 @@ class CompilationEngine implements ICompilationEngine {
     _writeLn('<parameterList>');
     while (_currentToken != ')') {
       _processType();
-      _processIdentifierOrThrow();
+      _processIdentifier();
       if (_currentToken == ',') {
         _process(',');
       }
@@ -184,20 +177,22 @@ class CompilationEngine implements ICompilationEngine {
       _processType();
     }
 
-    _processIdentifierOrThrow();
+    _processIdentifier();
     _process('(');
-
     compileParameterList();
     _process(')');
-
-    // TODO: implement compileSubroutine
-
+    compileSubroutineBody();
     _writeLn('</subroutineDec>');
   }
 
   @override
   void compileSubroutineBody() {
-    // TODO: implement compileSubroutineBody
+    _process('{');
+    while (_currentToken == 'var') {
+      compileVarDec();
+    }
+    compileStatements();
+    _process('}');
   }
 
   @override
@@ -207,7 +202,9 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileVarDec() {
-    // TODO: implement compileVarDec
+    _writeLn('<varDec>');
+    _processVarDec('var');
+    _writeLn('</varDec>');
   }
 
   @override
@@ -229,12 +226,28 @@ class CompilationEngine implements ICompilationEngine {
     _currentToken = tokenizer.advance();
   }
 
-  _processIdentifierOrThrow() {
+  _processIdentifier() {
     if (tokenType == TokenType.identifier) {
       _process(_currentToken);
     } else {
       throw InvalidIdentifierException(_currentToken);
     }
+  }
+
+  /// Processes multiple inline var declarations for class and local vars, where
+  /// [type] is the type of var declaration, e.g "field", "var", "static".
+  _processVarDec(String type) {
+    _process(type);
+    _processType();
+    _processIdentifier();
+
+    // Support multiple inline var declarations, such as "field int foo, bar;"
+    bool hasAdditionalVars() => _currentToken == ',';
+    while (hasAdditionalVars()) {
+      _process(_currentToken);
+      _processIdentifier();
+    }
+    _process(';');
   }
 
   /// Processes the current type or throws an exception if  [_currentToken] is
