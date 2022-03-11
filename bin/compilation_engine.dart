@@ -134,7 +134,18 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileLet() {
-    // TODO: implement compileLet
+    _writeLn('<letStatement>');
+    _process('let');
+    _processIdentifier();
+    if (_currentToken == '[') {
+      _process('[');
+      compileExpression();
+      _process(']');
+    }
+    _process('=');
+    compileExpression();
+    _process(';');
+    _writeLn('</letStatement>');
   }
 
   @override
@@ -157,7 +168,31 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileStatements() {
-    // TODO: implement compileStatements
+    _writeLn('<statements>');
+    final statementTokens = ['let', 'if', 'while', 'do', 'return'];
+
+    var tokenToProcess = _selectTokenToProcess(statementTokens);
+    while (tokenToProcess != null) {
+      switch (tokenToProcess) {
+        case 'let':
+          compileLet();
+          break;
+        case 'if':
+          compileIf();
+          break;
+        case 'while':
+          compileWhile();
+          break;
+        case 'do':
+          compileDo();
+          break;
+        case 'return':
+          compileReturn();
+          break;
+      }
+      tokenToProcess = _selectTokenToProcess(statementTokens);
+    }
+    _writeLn('</statements>');
   }
 
   @override
@@ -187,12 +222,14 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileSubroutineBody() {
+    _writeLn('<subroutineBody>');
     _process('{');
     while (_currentToken == 'var') {
       compileVarDec();
     }
     compileStatements();
     _process('}');
+    _writeLn('</subroutineBody>');
   }
 
   @override
