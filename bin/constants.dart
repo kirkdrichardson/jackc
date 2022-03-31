@@ -55,7 +55,6 @@ const symbols = {
   '/': true,
   '&': true,
   '|': true,
-  '"': true,
   '<': true,
   '>': true,
   '=': true,
@@ -75,3 +74,15 @@ const types = [
   'boolean',
   'char',
 ];
+
+const keywordConstants = {
+  'true': true,
+  'false': true,
+  'null': true,
+  'this': true,
+};
+
+const unaryOp = {
+  '-': true,
+  '~': true,
+};
