@@ -61,6 +61,18 @@ const symbols = {
   '~': true,
 };
 
+const operators = {
+  '+': true,
+  '-': true,
+  '*': true,
+  '/': true,
+  '&': true,
+  '|': true,
+  '<': true,
+  '>': true,
+  '=': true,
+};
+
 /// Symbol to html entity map for characters for use in xml translation
 const specialSymbols = {
   '<': '&lt;',

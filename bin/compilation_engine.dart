@@ -62,7 +62,7 @@ abstract class ICompilationEngine {
 }
 
 class CompilationEngine implements ICompilationEngine {
-  final Tokenizer tokenizer;
+  final ITokenizer tokenizer;
   final RandomAccessFile _raFile;
   String _currentToken;
 
@@ -118,7 +118,19 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileExpression() {
-    // TODO: implement compileExpression
+    _writeLn('<expression>');
+
+    var count = 0;
+
+    do {
+      if (count > 0 && operators.containsKey(_currentToken)) {
+        _process(_currentToken);
+      }
+      compileTerm();
+      count++;
+    } while (operators.containsKey(_currentToken));
+
+    _writeLn('</expression>');
   }
 
   @override
@@ -232,9 +244,54 @@ class CompilationEngine implements ICompilationEngine {
     _writeLn('</subroutineBody>');
   }
 
+  // term: integerConstant | stringConstant | keywordConstant | varName |
+  // varName'[' expression ']' | '(' expression ')' | (unaryOp term) | subroutineCall
   @override
   void compileTerm() {
-    // TODO: implement compileTerm
+    _writeLn('<term>');
+
+    final token = _currentToken;
+    final type = tokenizer.tokenType();
+
+    // If we have a keyword, make sure it is a keyword constant.
+    if (type == TokenType.keyword && !keywordConstants.containsKey(token)) {
+      throw InvalidKeywordConstantException(token);
+    }
+
+    // Process top-level types that don't require any additional logic.
+    if (type == TokenType.intConst ||
+        type == TokenType.stringConst ||
+        type == TokenType.keyword) {
+      _process(token);
+    }
+
+    if (unaryOp.containsKey(token)) {
+      _process(token);
+      compileTerm();
+    }
+
+    if (token == '(') {
+      _process('(');
+      compileExpression();
+      _process(')');
+    }
+
+    if (type == TokenType.identifier) {
+      _processIdentifier();
+      final nextToken = _currentToken;
+
+      // if (nextToken == '[') {
+      //   _process('[');
+      //   compileExpression();
+      //   _process(']');
+      // }
+
+      if (nextToken == '(') {
+        // todo - subroutineCall
+      }
+    }
+
+    _writeLn('</term>');
   }
 
   @override
@@ -253,6 +310,8 @@ class CompilationEngine implements ICompilationEngine {
 // Utilities
 //******************************************************************************
 
+  /// General process to write a token under one of the top-level types and
+  /// advance the tokenizer.
   _process(String token) {
     if (_currentToken == token) {
       _writeXMLToken();
@@ -263,6 +322,7 @@ class CompilationEngine implements ICompilationEngine {
     _currentToken = tokenizer.advance();
   }
 
+  /// Calls the [_process] method if we have identifier, otherwise throws.
   _processIdentifier() {
     if (tokenType == TokenType.identifier) {
       _process(_currentToken);
@@ -317,6 +377,7 @@ class CompilationEngine implements ICompilationEngine {
     return null;
   }
 
+  /// Top-level tokens. Every symbol falls under one of these token categories.
   void _writeXMLToken() {
     final currentToken = tokenizer.tokenType();
 
@@ -350,6 +411,7 @@ class CompilationEngine implements ICompilationEngine {
     _writeLn(xmlOutput);
   }
 
+  /// Writes string to output and appends a newline.
   void _writeLn(String str) {
     _raFile.writeStringSync(str + '\n');
   }

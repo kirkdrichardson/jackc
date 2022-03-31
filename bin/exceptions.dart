@@ -28,3 +28,8 @@ class InvalidIdentifierException extends CompilationException {
   InvalidIdentifierException(String currentToken)
       : super('Expected a valid identifier, but got $currentToken');
 }
+
+class InvalidKeywordConstantException extends CompilationException {
+  InvalidKeywordConstantException(String currentToken)
+      : super('Expected a keyword constant, but got $currentToken');
+}
