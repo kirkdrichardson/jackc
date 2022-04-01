@@ -95,7 +95,7 @@ class CompilationEngine implements ICompilationEngine {
       compileSubroutine();
     } while (
         _selectTokenToProcess(['constructor', 'function', 'method']) != null);
-    _process('}');
+    _process('}', advanceToken: false);
     _writeLn('</class>');
     _raFile.closeSync();
   }
@@ -312,14 +312,16 @@ class CompilationEngine implements ICompilationEngine {
 
   /// General process to write a token under one of the top-level types and
   /// advance the tokenizer.
-  _process(String token) {
+  _process(String token, {bool advanceToken = true}) {
     if (_currentToken == token) {
       _writeXMLToken();
     } else {
       throw Exception('Syntax error - expected $token but got $_currentToken');
     }
 
+    if (advanceToken) {
     _currentToken = tokenizer.advance();
+    }
   }
 
   /// Calls the [_process] method if we have identifier, otherwise throws.
