@@ -130,6 +130,7 @@ class CompilationEngine implements ICompilationEngine {
     } else {
       throw SyntaxError('one of "." or "("', _currentToken);
     }
+    _process(';');
     _writeLn('</doStatement>');
   }
 
@@ -152,8 +153,18 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   int compileExpressionList() {
-    // TODO: implement compileExpressionList
-    throw UnimplementedError();
+    var count = 0;
+    _writeLn('<expressionList>');
+    if (_currentToken != ')') {
+      do {
+        if (_currentToken == ',') {
+          _process(',');
+        }
+        compileExpression();
+      } while (_currentToken == ',');
+    }
+    _writeLn('</expressionList>');
+    return count;
   }
 
   @override
