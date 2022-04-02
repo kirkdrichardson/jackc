@@ -113,7 +113,24 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileDo() {
-    // TODO: implement compileDo
+    _writeLn('<doStatement>');
+      _process(_currentToken);
+    _processIdentifier();
+
+    if (_currentToken == '(') {
+      _process(_currentToken);
+      compileExpressionList();
+      _process(')');
+    } else if (_currentToken == '.') {
+      _process(_currentToken);
+      _processIdentifier();
+      _process('(');
+      compileExpressionList();
+      _process(')');
+    } else {
+      throw SyntaxError('one of "." or "("', _currentToken);
+    }
+    _writeLn('</doStatement>');
   }
 
   @override
@@ -316,7 +333,7 @@ class CompilationEngine implements ICompilationEngine {
     if (_currentToken == token) {
       _writeXMLToken();
     } else {
-      throw Exception('Syntax error - expected $token but got $_currentToken');
+      throw SyntaxError(token, _currentToken);
     }
 
     if (advanceToken) {
