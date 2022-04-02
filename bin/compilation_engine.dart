@@ -169,7 +169,15 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileIf() {
-    // TODO: implement compileIf
+    _writeLn('<ifStatement>');
+    _process('if');
+    _process('(');
+    compileExpression();
+    _process(')');
+    _process('{');
+    compileStatements();
+    _process('}');
+    _writeLn('</ifStatement>');
   }
 
   @override
