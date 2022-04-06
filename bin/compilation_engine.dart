@@ -114,7 +114,7 @@ class CompilationEngine implements ICompilationEngine {
   @override
   void compileDo() {
     _writeLn('<doStatement>');
-      _process(_currentToken);
+    _process(_currentToken);
     _processIdentifier();
 
     if (_currentToken == '(') {
@@ -177,6 +177,13 @@ class CompilationEngine implements ICompilationEngine {
     _process('{');
     compileStatements();
     _process('}');
+
+    if (_currentToken == 'else') {
+      _process('else');
+      _process('{');
+      compileStatements();
+      _process('}');
+    }
     _writeLn('</ifStatement>');
   }
 
@@ -211,7 +218,13 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileReturn() {
-    // TODO: implement compileReturn
+    _writeLn('<returnStatement>');
+    _process('return');
+    if (_currentToken != ';') {
+      compileExpression();
+    }
+    _process(';');
+    _writeLn('</returnStatement>');
   }
 
   @override
@@ -316,11 +329,11 @@ class CompilationEngine implements ICompilationEngine {
       _processIdentifier();
       final nextToken = _currentToken;
 
-      // if (nextToken == '[') {
-      //   _process('[');
-      //   compileExpression();
-      //   _process(']');
-      // }
+      if (nextToken == '[') {
+        _process('[');
+        compileExpression();
+        _process(']');
+      }
 
       if (nextToken == '(') {
         // todo - subroutineCall
@@ -356,7 +369,7 @@ class CompilationEngine implements ICompilationEngine {
     }
 
     if (advanceToken) {
-    _currentToken = tokenizer.advance();
+      _currentToken = tokenizer.advance();
     }
   }
 
