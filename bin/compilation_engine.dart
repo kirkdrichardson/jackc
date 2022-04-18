@@ -114,22 +114,7 @@ class CompilationEngine implements ICompilationEngine {
   @override
   void compileDo() {
     _writeLn('<doStatement>');
-    _process(_currentToken);
-    _processIdentifier();
-
-    if (_currentToken == '(') {
-      _process(_currentToken);
-      compileExpressionList();
-      _process(')');
-    } else if (_currentToken == '.') {
-      _process(_currentToken);
-      _processIdentifier();
-      _process('(');
-      compileExpressionList();
-      _process(')');
-    } else {
-      throw SyntaxError('one of "." or "("', _currentToken);
-    }
+    _process('do');
     _process(';');
     _writeLn('</doStatement>');
   }
@@ -329,15 +314,27 @@ class CompilationEngine implements ICompilationEngine {
       _processIdentifier();
       final nextToken = _currentToken;
 
-      if (nextToken == '[') {
-        _process('[');
-        compileExpression();
-        _process(']');
+      switch (nextToken) {
+        case '[':
+          _process('[');
+          compileExpression();
+          _process(']');
+          break;
+        case '(':
+          _process(nextToken);
+          compileExpressionList();
+          _process(')');
+          break;
+        case '.':
+          _process(nextToken);
+          _processIdentifier();
+          _process('(');
+          compileExpressionList();
+          _process(')');
+          break;
+        default: // Do nothing
       }
-
-      if (nextToken == '(') {
-        // todo - subroutineCall
-      }
+      // todo - subroutineCall
     }
 
     _writeLn('</term>');
