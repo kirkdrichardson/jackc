@@ -115,6 +115,7 @@ class CompilationEngine implements ICompilationEngine {
   void compileDo() {
     _writeLn('<doStatement>');
     _process('do');
+    _compileTerm();
     _process(';');
     _writeLn('</doStatement>');
   }
@@ -283,7 +284,11 @@ class CompilationEngine implements ICompilationEngine {
   @override
   void compileTerm() {
     _writeLn('<term>');
+    _compileTerm();
+    _writeLn('</term>');
+  }
 
+  void _compileTerm() {
     final token = _currentToken;
     final type = tokenizer.tokenType();
 
@@ -336,8 +341,6 @@ class CompilationEngine implements ICompilationEngine {
       }
       // todo - subroutineCall
     }
-
-    _writeLn('</term>');
   }
 
   @override
