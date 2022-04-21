@@ -352,7 +352,15 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileWhile() {
-    // TODO: implement compileWhile
+    _writeLn('<whileStatement>');
+    _process('while');
+    _process('(');
+    compileExpression();
+    _process(')');
+    _process('{');
+    compileStatements();
+    _process('}');
+    _writeLn('</whileStatement>');
   }
 
 //******************************************************************************
