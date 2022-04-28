@@ -302,17 +302,20 @@ class CompilationEngine implements ICompilationEngine {
         type == TokenType.stringConst ||
         type == TokenType.keyword) {
       _process(token);
+      return;
     }
 
     if (unaryOp.containsKey(token)) {
       _process(token);
       compileTerm();
+      return;
     }
 
     if (token == '(') {
       _process('(');
       compileExpression();
       _process(')');
+      return;
     }
 
     if (type == TokenType.identifier) {
@@ -339,7 +342,6 @@ class CompilationEngine implements ICompilationEngine {
           break;
         default: // Do nothing
       }
-      // todo - subroutineCall
     }
   }
 
