@@ -190,7 +190,8 @@ final _intConstMatcherRegEx = RegExp(r'^\d+');
 const _keywordMatcher =
     r'^(class|constructor|function|method|field|static|var|int|char|boolean|void|true|false|null|this|let|do|if|else|while|return)';
 final _keywordMatcherRegEx = RegExp(_keywordMatcher, caseSensitive: true);
-const _identifierMatcher = r'^[_a-zA-z]*';
-final _identifierMatcherRegEx = RegExp(_identifierMatcher);
+const _identifierMatcher = r'^[_a-z]+[_a-z0-9]*';
+final _identifierMatcherRegEx =
+    RegExp(_identifierMatcher, caseSensitive: false);
 const _stringMatcher = r'^".*"';
 final stringMatcherRegEx = RegExp(_stringMatcher);

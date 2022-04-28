@@ -74,7 +74,7 @@ void main(List<String> arguments) async {
         '.jack', '.xml', lastPathSegment.length - 5));
 
     final output = File(pathSegments.join('/'));
-    // print('Translating ${file.path} to ${output.path}');
+    print('Compiling "${output.path}"');
 
     CompilationEngine(Tokenizer(file), output).compileClass();
   }
