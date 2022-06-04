@@ -24,38 +24,80 @@ abstract class ISymbolTable {
   int indexOf(String name);
 }
 
+class _VarInfo {
+  String name;
+  String type;
+  String kind;
+  int index;
+  _VarInfo({
+    required this.name,
+    required this.type,
+    required this.kind,
+    required this.index,
+  });
+}
+
 class SymbolTable implements ISymbolTable {
+  final Map<String, _VarInfo> _table = {};
+  final _indexOfKind = {
+    'static': 0,
+    'field': 0,
+    'arg': 0,
+    'var': 0,
+  };
+
+  //////////////////////////////////////////////////////////////////////////////
+  ///////////////////////       Public API      ////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
   @override
   void define(String name, String type, String kind) {
-    // TODO: implement define
+    // NOTE - currently does not handle duplicate var exceptions.
+    // Closest scope will win.
+
+    _table[name] = _VarInfo(
+      name: name,
+      type: type,
+      kind: kind,
+      index: varCount(kind),
+    );
   }
 
   @override
-  int indexOf(String name) {
-    // TODO: implement indexOf
-    throw UnimplementedError();
-  }
+  int indexOf(String name) => _table[name]?.index ?? 0;
 
   @override
   String kindOf(String name) {
-    // TODO: implement kindOf
-    throw UnimplementedError();
+    final v = _getVarOrThrow(name);
+    return v.kind;
   }
 
   @override
   void reset() {
-    // TODO: implement reset
+    _table.clear();
+    resetIndex(k) => _indexOfKind[k] = 0;
+    _indexOfKind.keys.forEach(resetIndex);
   }
 
   @override
   String typeOf(String name) {
-    // TODO: implement typeOf
-    throw UnimplementedError();
+    final v = _getVarOrThrow(name);
+    return v.type;
   }
 
   @override
-  int varCount(String kind) {
-    // TODO: implement varCount
-    throw UnimplementedError();
+  int varCount(String kind) => _indexOfKind[kind]!;
+
+  //////////////////////////////////////////////////////////////////////////////
+  //////////////////       Private Utility      ////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  _VarInfo _getVarOrThrow(String name) {
+    final v = _table[name];
+    if (v == null) {
+      throw Exception('Var $name not found in SymbolTable');
+    }
+
+    return v;
   }
 }
