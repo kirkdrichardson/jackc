@@ -98,3 +98,11 @@ const unaryOp = {
   '-': true,
   '~': true,
 };
+
+const kind = {
+  'STATIC': 'STATIC',
+  'FIELD': 'FIELD',
+  'ARG': 'ARG',
+  'VAR': 'VAR',
+  'NONE': 'NONE',
+};
