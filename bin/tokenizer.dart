@@ -87,7 +87,7 @@ class Tokenizer implements ITokenizer {
         return _currentToken!;
       }
 
-      final stringMatch = _getFirstMatch(_stringMatcherRegEx);
+      final stringMatch = _getFirstMatch(stringMatcherRegEx);
       if (stringMatch != null) {
         _currentTokenType = TokenType.stringConst;
         _currentToken = stringMatch.group(0);
@@ -179,7 +179,7 @@ class Tokenizer implements ITokenizer {
 }
 
 //*****************************************************************************
-// Private utilities
+// Utilities
 //*****************************************************************************
 
 // Expression to match doc comments, inline comments, and whitespace.
@@ -190,7 +190,8 @@ final _intConstMatcherRegEx = RegExp(r'^\d+');
 const _keywordMatcher =
     r'^(class|constructor|function|method|field|static|var|int|char|boolean|void|true|false|null|this|let|do|if|else|while|return)';
 final _keywordMatcherRegEx = RegExp(_keywordMatcher, caseSensitive: true);
-const _identifierMatcher = r'^[_a-zA-z]*';
-final _identifierMatcherRegEx = RegExp(_identifierMatcher);
+const _identifierMatcher = r'^[_a-z]+[_a-z0-9]*';
+final _identifierMatcherRegEx =
+    RegExp(_identifierMatcher, caseSensitive: false);
 const _stringMatcher = r'^".*"';
-final _stringMatcherRegEx = RegExp(_stringMatcher);
+final stringMatcherRegEx = RegExp(_stringMatcher);
