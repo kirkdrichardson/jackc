@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'constants.dart';
 import 'exceptions.dart';
+import 'symbol_table.dart';
 import 'tokenizer.dart';
 
 // TODO: make all fields private and just expose a compile() method.
@@ -65,6 +66,10 @@ class CompilationEngine implements ICompilationEngine {
   final ITokenizer tokenizer;
   final RandomAccessFile _raFile;
   String _currentToken;
+  // Collects field and static variables for the class being compiled.
+  final ISymbolTable _classTable = SymbolTable();
+  // Collects arg and local variables for the subroutine being compiled.
+  final ISymbolTable _subroutineTable = SymbolTable();
 
   TokenType get tokenType => tokenizer.tokenType();
 
@@ -75,16 +80,17 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileClass() {
+    _classTable.reset();
+    _subroutineTable.reset();
+
     _writeLn('<class>');
     _process('class');
     if (tokenType != TokenType.identifier) {
       throw InvalidIdentifierException(
-          'Expected class var declaration but got "$_currentToken"');
+          'Expected class declaration but got "$_currentToken"');
     }
-
     // Write the class name.
-    _writeXMLToken();
-    _currentToken = tokenizer.advance();
+    _process(_currentToken);
     _process('{');
 
     do {
@@ -106,8 +112,9 @@ class CompilationEngine implements ICompilationEngine {
     if (tokenToProcess == null) {
       return;
     }
+
     _writeLn('<classVarDec>');
-    _processVarDec(tokenToProcess);
+    _processVarDec(tokenToProcess, VarScope.clazz);
     _writeLn('</classVarDec>');
   }
 
@@ -244,6 +251,8 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileSubroutine() {
+    _subroutineTable.reset();
+
     final tokenToProcess =
         _selectTokenToProcess(['constructor', 'function', 'method']);
     if (tokenToProcess == null) {
@@ -348,7 +357,7 @@ class CompilationEngine implements ICompilationEngine {
   @override
   void compileVarDec() {
     _writeLn('<varDec>');
-    _processVarDec('var');
+    _processVarDec('var', VarScope.subroutine);
     _writeLn('</varDec>');
   }
 
@@ -384,35 +393,78 @@ class CompilationEngine implements ICompilationEngine {
   }
 
   /// Calls the [_process] method if we have identifier, otherwise throws.
-  _processIdentifier() {
+  void _processIdentifier() {
+    _process(_getIdentifierOrThrow());
+  }
+
+  /// Returns [_currentToken] if it is an identifier.
+  String _getIdentifierOrThrow() {
     if (tokenType == TokenType.identifier) {
-      _process(_currentToken);
+      return _currentToken;
     } else {
       throw InvalidIdentifierException(_currentToken);
     }
   }
 
   /// Processes multiple inline var declarations for class and local vars, where
-  /// [type] is the type of var declaration, e.g "field", "var", "static".
-  _processVarDec(String type) {
+  /// [kind] is the kind of declaration, i.e. "field", "var", "static", "arg".
+  void _processVarDec(String kind, VarScope scope) {
+    _process(kind);
+
+    // We need to save the type in order to
+    //    1. add it to the relevant symbol table, and
+    //    2. reference it again in the case of multiline variable declarations
+    //
+    // Example:
+    //    field int i, j;
+    // Here, we need both the kind (field) and type (j) to add i and j to the
+    // _classTable as independent entries.
+    final type = _getTypeOrThrow();
     _process(type);
-    _processType();
-    _processIdentifier();
+
+    var varName = _getIdentifierOrThrow();
+
+    _addSymbolTableEntry(scope, varName, type, kind);
+    _process(varName);
 
     // Support multiple inline var declarations, such as "field int foo, bar;"
     bool hasAdditionalVars() => _currentToken == ',';
     while (hasAdditionalVars()) {
       _process(_currentToken);
-      _processIdentifier();
+      varName = _getIdentifierOrThrow();
+      _addSymbolTableEntry(scope, varName, type, kind);
+      _process(varName);
     }
     _process(';');
+
+    print('************************************************');
+    print('_classTable -->\n$_classTable\n');
+    print('_subroutineTable -->\n $_subroutineTable');
+  }
+
+  void _addSymbolTableEntry(
+    VarScope scope,
+    String name,
+    String type,
+    String kind,
+  ) {
+    if (scope == VarScope.clazz) {
+      _classTable.define(name, type, kind);
+    } else {
+      _subroutineTable.define(name, type, kind);
+    }
   }
 
   /// Processes the current type or throws an exception if  [_currentToken] is
   /// not a valid type.
   void _processType() {
+    _process(_getTypeOrThrow());
+  }
+
+  /// Returns the [_currentToken] if is a valid type.
+  String _getTypeOrThrow() {
     if (_isType()) {
-      _process(_currentToken);
+      return _currentToken;
     } else {
       throw InvalidTypeException(_currentToken);
     }
@@ -477,3 +529,6 @@ class CompilationEngine implements ICompilationEngine {
     _raFile.writeStringSync(str + '\n');
   }
 }
+
+/// Only 2 scopes are currently supported: class and subroutine.
+enum VarScope { clazz, subroutine }

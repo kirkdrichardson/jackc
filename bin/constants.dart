@@ -100,9 +100,9 @@ const unaryOp = {
 };
 
 const kind = {
-  'STATIC': 'STATIC',
-  'FIELD': 'FIELD',
-  'ARG': 'ARG',
-  'VAR': 'VAR',
-  'NONE': 'NONE',
+  'static': 'static',
+  'field': 'field',
+  'arg': 'arg',
+  'var': 'var',
+  'none': 'none',
 };
