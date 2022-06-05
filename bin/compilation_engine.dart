@@ -200,8 +200,14 @@ class CompilationEngine implements ICompilationEngine {
   void compileParameterList() {
     _writeLn('<parameterList>');
     while (_currentToken != ')') {
-      _processType();
-      _processIdentifier();
+      final type = _getTypeOrThrow();
+      _process(type);
+
+      final argName = _getIdentifierOrThrow();
+      _process(argName);
+
+      _subroutineTable.define(argName, type, 'arg');
+
       if (_currentToken == ',') {
         _process(',');
       }
@@ -423,9 +429,9 @@ class CompilationEngine implements ICompilationEngine {
     _process(type);
 
     var varName = _getIdentifierOrThrow();
+    _process(varName);
 
     _addSymbolTableEntry(scope, varName, type, kind);
-    _process(varName);
 
     // Support multiple inline var declarations, such as "field int foo, bar;"
     bool hasAdditionalVars() => _currentToken == ',';
