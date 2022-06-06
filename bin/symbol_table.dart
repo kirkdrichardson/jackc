@@ -3,31 +3,34 @@ abstract class ISymbolTable {
   /// Should be called when starting to compile a subroutine declaration.
   void reset();
 
-  /// Defines (adds to the table) a new variable of the given name, type, and
+  /// Adds to the table a new variable of the given name, type, and
   /// kind. Assigns to it the index value of that kind and adds
   /// 1 to the index.
-  void define(String name, String type, String kind);
+  void add(String name, String type, String kind);
+
+  // Get the [VarInfo] for a variable by name, null if not found.
+  VarInfo? find(String name);
 
   // /// Returns the number of variables of the given kind already defined
   // /// in the table.
   // int varCount(String kind);
 
-  /// Returns the kind of the named identifier (STATIC, FIELD, ARG, VAR, NONE)
-  String kindOf(String name);
+  // /// Returns the kind of the named identifier (STATIC, FIELD, ARG, VAR, NONE)
+  // String kindOf(String name);
 
-  /// Returns the type of the named variable.
-  String typeOf(String name);
+  // /// Returns the type of the named variable.
+  // String typeOf(String name);
 
-  /// Returns the index of the named variable, or -1 if not found.
-  int indexOf(String name);
+  // /// Returns the index of the named variable, or -1 if not found.
+  // int indexOf(String name);
 }
 
-class _VarInfo {
+class VarInfo {
   String name;
   String type;
   String kind;
   int index;
-  _VarInfo({
+  VarInfo({
     required this.name,
     required this.type,
     required this.kind,
@@ -37,7 +40,7 @@ class _VarInfo {
 
 class SymbolTable implements ISymbolTable {
   /// A variable name to metadata map.
-  final Map<String, _VarInfo> _table = {};
+  final Map<String, VarInfo> _table = {};
 
   /// Tracks counts of variables by kind.
   final _countForKind = {
@@ -52,7 +55,7 @@ class SymbolTable implements ISymbolTable {
   //////////////////////////////////////////////////////////////////////////////
 
   @override
-  void define(String name, String type, String kind) {
+  void add(String name, String type, String kind) {
     // NOTE - currently does not handle duplicate var exceptions.
     // Closest scope will win.
 
@@ -61,7 +64,7 @@ class SymbolTable implements ISymbolTable {
       throw Exception('Invalid kind $kind for variable $name');
     }
 
-    _table[name] = _VarInfo(
+    _table[name] = VarInfo(
       name: name,
       type: type,
       kind: kind,
@@ -72,13 +75,16 @@ class SymbolTable implements ISymbolTable {
   }
 
   @override
-  int indexOf(String name) => _table[name]?.index ?? -1;
+  VarInfo? find(String name) => _table[name];
 
-  @override
-  String kindOf(String name) {
-    final v = _getVarOrThrow(name);
-    return v.kind;
-  }
+  // @override
+  // int indexOf(String name) => _table[name]?.index ?? -1;
+
+  // @override
+  // String kindOf(String name) {
+  //   final v = _getVarOrThrow(name);
+  //   return v.kind;
+  // }
 
   @override
   void reset() {
@@ -87,16 +93,16 @@ class SymbolTable implements ISymbolTable {
     _countForKind.keys.forEach(resetIndex);
   }
 
-  @override
-  String typeOf(String name) {
-    final v = _getVarOrThrow(name);
-    return v.type;
-  }
+  // @override
+  // String typeOf(String name) {
+  //   final v = _getVarOrThrow(name);
+  //   return v.type;
+  // }
 
   @override
   String toString() {
     final b = StringBuffer();
-    void writeValue(_VarInfo e) {
+    void writeValue(VarInfo e) {
       b.writeln(
           '{name: ${e.name}, kind: ${e.kind}, type: ${e.type}, index: ${e.index}');
     }
@@ -112,12 +118,13 @@ class SymbolTable implements ISymbolTable {
   //////////////////       Private Utility      ////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  _VarInfo _getVarOrThrow(String name) {
-    final v = _table[name];
-    if (v == null) {
-      throw Exception('Var $name not found in SymbolTable');
-    }
+  // VarInfo _getVarOrThrow(String name) {
+  //   final v = _table[name];
+  //   if (v == null) {
+  //     throw Exception('Var $name not found in SymbolTable');
+  //   }
 
-    return v;
-  }
+  //   return v;
+  // }
+
 }
