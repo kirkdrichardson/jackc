@@ -102,12 +102,13 @@ class SymbolTable implements ISymbolTable {
   @override
   String toString() {
     final b = StringBuffer();
-    void writeValue(VarInfo e) {
+    void writeValue(MapEntry<String, VarInfo> e) {
+      final v = e.value;
       b.writeln(
-          '{name: ${e.name}, kind: ${e.kind}, type: ${e.type}, index: ${e.index}');
+          '${e.key} -> {name: ${v.name}, kind: ${v.kind}, type: ${v.type}, index: ${v.index}');
     }
 
-    _table.values.forEach(writeValue);
+    _table.entries.forEach(writeValue);
     return b.toString();
   }
 
