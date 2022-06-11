@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'constants.dart';
 import 'exceptions.dart';
+import 'symbol_table.dart';
 import 'tokenizer.dart';
 
 // TODO: make all fields private and just expose a compile() method.
@@ -66,6 +67,18 @@ class CompilationEngine implements ICompilationEngine {
   final RandomAccessFile _raFile;
   String _currentToken;
 
+  /// Name of the class being compiled. Used to providing this argument.
+  String? _currentClassName;
+
+  /// Name of the subroutine being compiled.
+  String? _currentSubroutineName;
+
+  /// Collects field and static variables for the class being compiled.
+  final ISymbolTable _classTable = SymbolTable();
+
+  /// Collects arg and local variables for the subroutine being compiled.
+  final ISymbolTable _subroutineTable = SymbolTable();
+
   TokenType get tokenType => tokenizer.tokenType();
 
   /// Opens the input .jack file and gets ready to tokenize it
@@ -75,16 +88,13 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileClass() {
+    _classTable.reset();
+    _subroutineTable.reset();
+
     _writeLn('<class>');
     _process('class');
-    if (tokenType != TokenType.identifier) {
-      throw InvalidIdentifierException(
-          'Expected class var declaration but got "$_currentToken"');
-    }
-
-    // Write the class name.
-    _writeXMLToken();
-    _currentToken = tokenizer.advance();
+    _currentClassName = _currentToken;
+    _processIdentifier(isDeclaration: true);
     _process('{');
 
     do {
@@ -106,8 +116,9 @@ class CompilationEngine implements ICompilationEngine {
     if (tokenToProcess == null) {
       return;
     }
+
     _writeLn('<classVarDec>');
-    _processVarDec(tokenToProcess);
+    _processVarDec(tokenToProcess, VarScope.clazz);
     _writeLn('</classVarDec>');
   }
 
@@ -177,7 +188,7 @@ class CompilationEngine implements ICompilationEngine {
   void compileLet() {
     _writeLn('<letStatement>');
     _process('let');
-    _processIdentifier();
+    _processIdentifier(isDeclaration: false);
     if (_currentToken == '[') {
       _process('[');
       compileExpression();
@@ -193,8 +204,14 @@ class CompilationEngine implements ICompilationEngine {
   void compileParameterList() {
     _writeLn('<parameterList>');
     while (_currentToken != ')') {
-      _processType();
-      _processIdentifier();
+      final type = _getTypeOrThrow();
+      _process(type);
+
+      final argName = _currentToken;
+      _subroutineTable.add(argName, type, 'arg');
+
+      _processIdentifier(isDeclaration: true);
+
       if (_currentToken == ',') {
         _process(',');
       }
@@ -244,14 +261,21 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileSubroutine() {
-    final tokenToProcess =
+    _subroutineTable.reset();
+
+    final subroutineKind =
         _selectTokenToProcess(['constructor', 'function', 'method']);
-    if (tokenToProcess == null) {
+    if (subroutineKind == null) {
       return;
     }
 
+    _process(subroutineKind);
+    // Provide the "this" argument if it is a method.
+    if ('method' == subroutineKind) {
+      _subroutineTable.add('this', _currentClassName!, 'arg');
+    }
+
     _writeLn('<subroutineDec>');
-    _process(tokenToProcess);
 
     if (_currentToken == 'void') {
       _process(_currentToken);
@@ -259,12 +283,14 @@ class CompilationEngine implements ICompilationEngine {
       _processType();
     }
 
-    _processIdentifier();
+    _currentSubroutineName = _currentToken;
+    _processIdentifier(isDeclaration: false);
     _process('(');
     compileParameterList();
     _process(')');
     compileSubroutineBody();
     _writeLn('</subroutineDec>');
+    _currentSubroutineName = null;
   }
 
   @override
@@ -319,7 +345,7 @@ class CompilationEngine implements ICompilationEngine {
     }
 
     if (type == TokenType.identifier) {
-      _processIdentifier();
+      _processIdentifier(isDeclaration: false);
       final nextToken = _currentToken;
 
       switch (nextToken) {
@@ -335,7 +361,7 @@ class CompilationEngine implements ICompilationEngine {
           break;
         case '.':
           _process(nextToken);
-          _processIdentifier();
+          _processIdentifier(isDeclaration: false);
           _process('(');
           compileExpressionList();
           _process(')');
@@ -348,7 +374,7 @@ class CompilationEngine implements ICompilationEngine {
   @override
   void compileVarDec() {
     _writeLn('<varDec>');
-    _processVarDec('var');
+    _processVarDec('var', VarScope.subroutine);
     _writeLn('</varDec>');
   }
 
@@ -371,9 +397,77 @@ class CompilationEngine implements ICompilationEngine {
 
   /// General process to write a token under one of the top-level types and
   /// advance the tokenizer.
-  _process(String token, {bool advanceToken = true}) {
+  _process(String token,
+      {bool advanceToken = true, _IdentifierType? identifierType}) {
     if (_currentToken == token) {
-      _writeXMLToken();
+      final tokenType = tokenizer.tokenType();
+
+      String xmlOutput;
+
+      switch (tokenType) {
+        case TokenType.identifier:
+          if (identifierType == null) {
+            throw Exception(
+                'Must pass _IdentifierType when processing identifier "$_currentToken".');
+          }
+
+          final identifier = tokenizer.identifier();
+
+          VarInfo? info;
+          info = _subroutineTable.find(identifier);
+          info ??= _classTable.find(identifier);
+
+          if (info == null &&
+              identifier != _currentClassName &&
+              identifier != _currentSubroutineName) {
+            throw Exception(
+                'Identifier not found in symbol table and is not current class "$identifier"');
+          }
+
+          final category = info?.kind ??
+              (identifier == _currentClassName ? 'class' : 'subroutine');
+
+          // final isSubroutineVar = _subroutineTable.indexOf(identifier) > -1;
+          // final isClassRoutineVar = _classTable.indexOf(identifier) > -1;
+          final b = StringBuffer();
+          b.writeln('<identifier>');
+          b.writeln('<name> $identifier </name>');
+          // field, static, var, arg, class, or subroutine
+          b.writeln('<category> $category </category>');
+          // Only if this is not a class or subroutine
+          if (info != null) {
+            b.writeln('<index> ${info.index} </index>');
+          }
+          // declared | used
+          b.writeln(
+              '<usage> ${identifierType == _IdentifierType.declaration ? "declaration" : "used"} </usage>');
+
+          b.writeln('</identifier>');
+
+          xmlOutput = b.toString();
+          break;
+        case TokenType.intConst:
+          xmlOutput =
+              '<integerConstant> ${tokenizer.intVal()} </integerConstant>';
+          break;
+        case TokenType.keyword:
+          // todo - we could probably have tokenizer.keyword return the value directly
+          xmlOutput = '<keyword> ${tokenizer.keyword().value()} </keyword>';
+          break;
+        case TokenType.stringConst:
+          xmlOutput =
+              '<stringConstant> ${tokenizer.stringVal()} </stringConstant>';
+          break;
+        case TokenType.symbol:
+          final xmlSymbol =
+              specialSymbols[tokenizer.symbol()] ?? tokenizer.symbol();
+          xmlOutput = '<symbol> $xmlSymbol </symbol>';
+          break;
+        default:
+          throw Exception('Unknown token type: $tokenType');
+      }
+
+      _writeLn(xmlOutput);
     } else {
       throw SyntaxError(token, _currentToken);
     }
@@ -384,35 +478,73 @@ class CompilationEngine implements ICompilationEngine {
   }
 
   /// Calls the [_process] method if we have identifier, otherwise throws.
-  _processIdentifier() {
+  void _processIdentifier({required bool isDeclaration}) {
     if (tokenType == TokenType.identifier) {
-      _process(_currentToken);
+      _process(_currentToken,
+          identifierType: isDeclaration
+              ? _IdentifierType.declaration
+              : _IdentifierType.usage);
     } else {
       throw InvalidIdentifierException(_currentToken);
     }
   }
 
   /// Processes multiple inline var declarations for class and local vars, where
-  /// [type] is the type of var declaration, e.g "field", "var", "static".
-  _processVarDec(String type) {
+  /// [kind] is the kind of declaration, i.e. "field", "var", "static", "arg".
+  void _processVarDec(String kind, VarScope scope) {
+    _process(kind);
+
+    // We need to save the type in order to
+    //    1. add it to the relevant symbol table, and
+    //    2. reference it again in the case of multiline variable declarations
+    //
+    // Example:
+    //    field int i, j;
+    // Here, we need both the kind (field) and type (j) to add i and j to the
+    // _classTable as independent entries.
+    final type = _getTypeOrThrow();
     _process(type);
-    _processType();
-    _processIdentifier();
+
+    var varName = _currentToken;
+    _addSymbolTableEntry(scope, varName, type, kind);
+    _processIdentifier(isDeclaration: true);
 
     // Support multiple inline var declarations, such as "field int foo, bar;"
     bool hasAdditionalVars() => _currentToken == ',';
     while (hasAdditionalVars()) {
       _process(_currentToken);
-      _processIdentifier();
+      varName = _currentToken;
+      _addSymbolTableEntry(scope, varName, type, kind);
+      _processIdentifier(isDeclaration: true);
     }
     _process(';');
+  }
+
+  void _addSymbolTableEntry(
+    VarScope scope,
+    String name,
+    String type,
+    String kind,
+  ) {
+    if (scope == VarScope.clazz) {
+      _classTable.add(name, type, kind);
+    } else {
+      _subroutineTable.add(name, type, kind);
+    }
   }
 
   /// Processes the current type or throws an exception if  [_currentToken] is
   /// not a valid type.
   void _processType() {
+    _process(_getTypeOrThrow(),
+        identifierType:
+            tokenType == TokenType.identifier ? _IdentifierType.usage : null);
+  }
+
+  /// Returns the [_currentToken] if is a valid type.
+  String _getTypeOrThrow() {
     if (_isType()) {
-      _process(_currentToken);
+      return _currentToken;
     } else {
       throw InvalidTypeException(_currentToken);
     }
@@ -438,42 +570,18 @@ class CompilationEngine implements ICompilationEngine {
     return null;
   }
 
-  /// Top-level tokens. Every symbol falls under one of these token categories.
-  void _writeXMLToken() {
-    final currentToken = tokenizer.tokenType();
-
-    String xmlOutput;
-
-    switch (currentToken) {
-      case TokenType.identifier:
-        xmlOutput = '<identifier> ${tokenizer.identifier()} </identifier>';
-        break;
-      case TokenType.intConst:
-        xmlOutput =
-            '<integerConstant> ${tokenizer.intVal()} </integerConstant>';
-        break;
-      case TokenType.keyword:
-        // todo - we could probably have tokenizer.keyword return the value directly
-        xmlOutput = '<keyword> ${tokenizer.keyword().value()} </keyword>';
-        break;
-      case TokenType.stringConst:
-        xmlOutput =
-            '<stringConstant> ${tokenizer.stringVal()} </stringConstant>';
-        break;
-      case TokenType.symbol:
-        final xmlSymbol =
-            specialSymbols[tokenizer.symbol()] ?? tokenizer.symbol();
-        xmlOutput = '<symbol> $xmlSymbol </symbol>';
-        break;
-      default:
-        throw Exception('Unknown token type: $currentToken');
-    }
-
-    _writeLn(xmlOutput);
-  }
-
   /// Writes string to output and appends a newline.
   void _writeLn(String str) {
     _raFile.writeStringSync(str + '\n');
   }
+}
+
+/// Only 2 scopes are currently supported: class and subroutine.
+enum VarScope { clazz, subroutine }
+
+/// Used when processing an identifier, to indicate whether variable is being
+/// declared or used.
+enum _IdentifierType {
+  declaration,
+  usage,
 }
