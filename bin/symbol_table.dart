@@ -11,9 +11,9 @@ abstract class ISymbolTable {
   // Get the [VarInfo] for a variable by name, null if not found.
   VarInfo? find(String name);
 
-  // /// Returns the number of variables of the given kind already defined
-  // /// in the table.
-  // int varCount(String kind);
+  /// Returns the number of variables of the given kind already defined
+  /// in the table.
+  int varCount(String kind);
 
   // /// Returns the kind of the named identifier (STATIC, FIELD, ARG, VAR, NONE)
   // String kindOf(String name);
@@ -112,8 +112,8 @@ class SymbolTable implements ISymbolTable {
     return b.toString();
   }
 
-  // @override
-  // int varCount(String kind) => _countForKind[kind] ?? -1;
+  @override
+  int varCount(String kind) => _countForKind[kind] ?? -1;
 
   //////////////////////////////////////////////////////////////////////////////
   //////////////////       Private Utility      ////////////////////////////////

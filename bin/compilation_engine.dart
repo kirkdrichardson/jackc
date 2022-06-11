@@ -88,14 +88,14 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileClass() {
+    _verifyToken('class');
+    _currentClassName = _currentToken;
+
     _classTable.reset();
     _subroutineTable.reset();
 
-    _writeLn('<class>');
-    _process('class');
-    _currentClassName = _currentToken;
     _processIdentifier(isDeclaration: true);
-    _process('{');
+    _verifyToken('{');
 
     do {
       compileClassVarDec();
@@ -105,6 +105,8 @@ class CompilationEngine implements ICompilationEngine {
       compileSubroutine();
     } while (
         _selectTokenToProcess(['constructor', 'function', 'method']) != null);
+
+    // todo - continue here
     _process('}', advanceToken: false);
     _writeLn('</class>');
     _raFile.closeSync();
@@ -269,27 +271,32 @@ class CompilationEngine implements ICompilationEngine {
       return;
     }
 
-    _process(subroutineKind);
     // Provide the "this" argument if it is a method.
     if ('method' == subroutineKind) {
       _subroutineTable.add('this', _currentClassName!, 'arg');
     }
 
-    _writeLn('<subroutineDec>');
+    // Advance past subroutine kind.
+    _advanceToken();
 
-    if (_currentToken == 'void') {
-      _process(_currentToken);
-    } else {
-      _processType();
+    // Swallow return type for now.
+    String returnType = _currentToken;
+    if (returnType != 'void') {
+      returnType = _getTypeOrThrow();
     }
+    _advanceToken();
 
     _currentSubroutineName = _currentToken;
-    _processIdentifier(isDeclaration: false);
-    _process('(');
+    _advanceTokenBeyondIdentifier();
+
+    _writeLn(
+        'function $_currentClassName.$_currentSubroutineName ${_subroutineTable.varCount('arg')}');
+
+    _verifyToken('(');
     compileParameterList();
-    _process(')');
+    _verifyToken(')');
     compileSubroutineBody();
-    _writeLn('</subroutineDec>');
+
     _currentSubroutineName = null;
   }
 
@@ -395,85 +402,108 @@ class CompilationEngine implements ICompilationEngine {
 // Utilities
 //******************************************************************************
 
-  /// General process to write a token under one of the top-level types and
-  /// advance the tokenizer.
-  _process(String token,
-      {bool advanceToken = true, _IdentifierType? identifierType}) {
-    if (_currentToken == token) {
-      final tokenType = tokenizer.tokenType();
+  /// Advances tokenizer and assigns [_currentToken] to new current token.
+  void _advanceToken() {
+    _currentToken = tokenizer.advance();
+  }
 
-      String xmlOutput;
+  /// Advances tokenizer and assigns [_currentToken] to new current token if
+  /// current token is an identifier.
+  void _advanceTokenBeyondIdentifier() {
+    if (tokenType != TokenType.identifier) {
+      throw InvalidIdentifierException(_currentToken);
+    }
+    _advanceToken();
+  }
 
-      switch (tokenType) {
-        case TokenType.identifier:
-          if (identifierType == null) {
-            throw Exception(
-                'Must pass _IdentifierType when processing identifier "$_currentToken".');
-          }
-
-          final identifier = tokenizer.identifier();
-
-          VarInfo? info;
-          info = _subroutineTable.find(identifier);
-          info ??= _classTable.find(identifier);
-
-          if (info == null &&
-              identifier != _currentClassName &&
-              identifier != _currentSubroutineName) {
-            throw Exception(
-                'Identifier not found in symbol table and is not current class "$identifier"');
-          }
-
-          final category = info?.kind ??
-              (identifier == _currentClassName ? 'class' : 'subroutine');
-
-          // final isSubroutineVar = _subroutineTable.indexOf(identifier) > -1;
-          // final isClassRoutineVar = _classTable.indexOf(identifier) > -1;
-          final b = StringBuffer();
-          b.writeln('<identifier>');
-          b.writeln('<name> $identifier </name>');
-          // field, static, var, arg, class, or subroutine
-          b.writeln('<category> $category </category>');
-          // Only if this is not a class or subroutine
-          if (info != null) {
-            b.writeln('<index> ${info.index} </index>');
-          }
-          // declared | used
-          b.writeln(
-              '<usage> ${identifierType == _IdentifierType.declaration ? "declaration" : "used"} </usage>');
-
-          b.writeln('</identifier>');
-
-          xmlOutput = b.toString();
-          break;
-        case TokenType.intConst:
-          xmlOutput =
-              '<integerConstant> ${tokenizer.intVal()} </integerConstant>';
-          break;
-        case TokenType.keyword:
-          // todo - we could probably have tokenizer.keyword return the value directly
-          xmlOutput = '<keyword> ${tokenizer.keyword().value()} </keyword>';
-          break;
-        case TokenType.stringConst:
-          xmlOutput =
-              '<stringConstant> ${tokenizer.stringVal()} </stringConstant>';
-          break;
-        case TokenType.symbol:
-          final xmlSymbol =
-              specialSymbols[tokenizer.symbol()] ?? tokenizer.symbol();
-          xmlOutput = '<symbol> $xmlSymbol </symbol>';
-          break;
-        default:
-          throw Exception('Unknown token type: $tokenType');
-      }
-
-      _writeLn(xmlOutput);
-    } else {
+  /// Throws if expected token doesn't match [_currentToken]. Advances
+  /// [_currentToken] when valid unless specified otherwise.
+  void _verifyToken(String token, {bool advanceToken = true}) {
+    if (_currentToken != token) {
       throw SyntaxError(token, _currentToken);
     }
 
     if (advanceToken) {
-      _currentToken = tokenizer.advance();
+      _advanceToken();
+    }
+  }
+
+  /// General process to write a token under one of the top-level types and
+  /// advance the tokenizer.
+  void _process(String token,
+      {bool advanceToken = true, _IdentifierType? identifierType}) {
+    _verifyToken(token, advanceToken: false);
+
+    final tokenType = tokenizer.tokenType();
+    String? xmlOutput;
+
+    switch (tokenType) {
+      case TokenType.identifier:
+        if (identifierType == null) {
+          throw Exception(
+              'Must pass _IdentifierType when processing identifier "$_currentToken".');
+        }
+
+        final identifier = tokenizer.identifier();
+
+        VarInfo? info;
+        info = _subroutineTable.find(identifier);
+        info ??= _classTable.find(identifier);
+
+        if (info == null &&
+            identifier != _currentClassName &&
+            identifier != _currentSubroutineName) {
+          throw Exception(
+              'Identifier not found in symbol table and is not current class "$identifier"');
+        }
+
+        final category = info?.kind ??
+            (identifier == _currentClassName ? 'class' : 'subroutine');
+
+        final b = StringBuffer();
+        b.writeln('<identifier>');
+        b.writeln('<name> $identifier </name>');
+        // field, static, var, arg, class, or subroutine
+        b.writeln('<category> $category </category>');
+        // Only if this is not a class or subroutine
+        if (info != null) {
+          b.writeln('<index> ${info.index} </index>');
+        }
+        // declared | used
+        b.writeln(
+            '<usage> ${identifierType == _IdentifierType.declaration ? "declaration" : "used"} </usage>');
+
+        b.writeln('</identifier>');
+
+        // xmlOutput = b.toString();
+        break;
+      case TokenType.intConst:
+        xmlOutput =
+            '<integerConstant> ${tokenizer.intVal()} </integerConstant>';
+        break;
+      case TokenType.keyword:
+        // todo - we could probably have tokenizer.keyword return the value directly
+        xmlOutput = '<keyword> ${tokenizer.keyword().value()} </keyword>';
+        break;
+      case TokenType.stringConst:
+        xmlOutput =
+            '<stringConstant> ${tokenizer.stringVal()} </stringConstant>';
+        break;
+      case TokenType.symbol:
+        final xmlSymbol =
+            specialSymbols[tokenizer.symbol()] ?? tokenizer.symbol();
+        xmlOutput = '<symbol> $xmlSymbol </symbol>';
+        break;
+      default:
+        throw Exception('Unknown token type: $tokenType');
+    }
+
+    if (xmlOutput != null && xmlOutput.trim().isNotEmpty) {
+      _writeLn(xmlOutput);
+    }
+
+    if (advanceToken) {
+      _advanceToken();
     }
   }
 
