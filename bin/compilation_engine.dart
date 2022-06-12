@@ -106,9 +106,7 @@ class CompilationEngine implements ICompilationEngine {
     } while (
         _selectTokenToProcess(['constructor', 'function', 'method']) != null);
 
-    // todo - continue here
-    _process('}', advanceToken: false);
-    _writeLn('</class>');
+    _verifyToken('}', advanceToken: false);
     _raFile.closeSync();
   }
 
@@ -126,43 +124,57 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileDo() {
-    _writeLn('<doStatement>');
-    _process('do');
-    _compileTerm();
-    _process(';');
-    _writeLn('</doStatement>');
+    _verifyToken('do');
+    compileExpression();
+    // Calling a subroutine above will have pushed a value to the stack, so
+    // we want to discard it.
+    _writeLn('pop temp 0');
+    _verifyToken(';');
   }
 
   @override
   void compileExpression() {
-    _writeLn('<expression>');
+    compileTerm();
 
-    var count = 0;
-
-    do {
-      if (count > 0 && operators.containsKey(_currentToken)) {
-        _process(_currentToken);
-      }
+    while (operators.containsKey(_currentToken)) {
+      final operator = _currentToken;
+      _advanceToken();
       compileTerm();
-      count++;
-    } while (operators.containsKey(_currentToken));
 
-    _writeLn('</expression>');
+      switch (operator) {
+        case '+':
+          _writeLn('add');
+          break;
+        case '-':
+          _writeLn('subtract');
+          break;
+        case '*':
+          _writeLn('call Math.multiply 2');
+          break;
+        case '/':
+          _writeLn('call Math.divide 2');
+          break;
+        // case '-':
+        //   _writeLn('call Math.multiply 2');
+        //   break;
+        default:
+          throw UnimplementedError('Operator "$operator" not implemented');
+      }
+    }
   }
 
   @override
   int compileExpressionList() {
     var count = 0;
-    _writeLn('<expressionList>');
     if (_currentToken != ')') {
       do {
         if (_currentToken == ',') {
-          _process(',');
+          _advanceToken();
         }
         compileExpression();
+        count++;
       } while (_currentToken == ',');
     }
-    _writeLn('</expressionList>');
     return count;
   }
 
@@ -204,37 +216,38 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileParameterList() {
-    _writeLn('<parameterList>');
     while (_currentToken != ')') {
       final type = _getTypeOrThrow();
-      _process(type);
+      _advanceToken();
 
       final argName = _currentToken;
       _subroutineTable.add(argName, type, 'arg');
 
-      _processIdentifier(isDeclaration: true);
+      _advanceTokenBeyondIdentifier();
 
       if (_currentToken == ',') {
-        _process(',');
+        _verifyToken(',');
       }
     }
-    _writeLn('</parameterList>');
   }
 
   @override
   void compileReturn() {
-    _writeLn('<returnStatement>');
-    _process('return');
+    _verifyToken('return');
+
     if (_currentToken != ';') {
       compileExpression();
+    } else {
+      // If we have a void return, we need to push a default value to fulfill
+      // the function call and return contract.
+      _writeLn('push constant 0');
     }
-    _process(';');
-    _writeLn('</returnStatement>');
+    _verifyToken(';');
+    _writeLn('return');
   }
 
   @override
   void compileStatements() {
-    _writeLn('<statements>');
     final statementTokens = ['let', 'if', 'while', 'do', 'return'];
 
     var tokenToProcess = _selectTokenToProcess(statementTokens);
@@ -258,7 +271,6 @@ class CompilationEngine implements ICompilationEngine {
       }
       tokenToProcess = _selectTokenToProcess(statementTokens);
     }
-    _writeLn('</statements>');
   }
 
   @override
@@ -302,78 +314,83 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileSubroutineBody() {
-    _writeLn('<subroutineBody>');
-    _process('{');
+    _verifyToken('{');
     while (_currentToken == 'var') {
+      // todo - convert from xml to vm
       compileVarDec();
     }
     compileStatements();
-    _process('}');
-    _writeLn('</subroutineBody>');
+    _verifyToken('}');
   }
 
   // term: integerConstant | stringConstant | keywordConstant | varName |
   // varName'[' expression ']' | '(' expression ')' | (unaryOp term) | subroutineCall
   @override
   void compileTerm() {
-    _writeLn('<term>');
-    _compileTerm();
-    _writeLn('</term>');
-  }
-
-  void _compileTerm() {
     final token = _currentToken;
     final type = tokenizer.tokenType();
-
-    // If we have a keyword, make sure it is a keyword constant.
-    if (type == TokenType.keyword && !keywordConstants.containsKey(token)) {
-      throw InvalidKeywordConstantException(token);
-    }
 
     // Process top-level types that don't require any additional logic.
     if (type == TokenType.intConst ||
         type == TokenType.stringConst ||
         type == TokenType.keyword) {
-      _process(token);
+      // If we have a keyword, make sure it is a keyword constant.
+      if (type == TokenType.keyword && !keywordConstants.containsKey(token)) {
+        throw InvalidKeywordConstantException(token);
+      }
+
+      _writeLn('push constant $token');
+      _advanceToken();
       return;
     }
 
     if (unaryOp.containsKey(token)) {
-      _process(token);
       compileTerm();
+
+      if (token == '-') {
+        _writeLn('neg');
+        _advanceToken();
+      } else if (token == '~') {
+        throw UnimplementedError();
+      }
       return;
     }
 
     if (token == '(') {
-      _process('(');
+      _verifyToken('(');
       compileExpression();
-      _process(')');
+      _verifyToken(')');
       return;
     }
 
     if (type == TokenType.identifier) {
-      _processIdentifier(isDeclaration: false);
+      final identifier = _currentToken;
+      _advanceTokenBeyondIdentifier();
       final nextToken = _currentToken;
 
       switch (nextToken) {
         case '[':
-          _process('[');
+          _verifyToken('[');
           compileExpression();
-          _process(']');
+          _verifyToken(']');
           break;
         case '(':
-          _process(nextToken);
+          _verifyToken(nextToken);
           compileExpressionList();
-          _process(')');
+          _verifyToken(')');
           break;
         case '.':
-          _process(nextToken);
-          _processIdentifier(isDeclaration: false);
-          _process('(');
-          compileExpressionList();
-          _process(')');
+          _advanceToken();
+          final subroutineName = _currentToken;
+          _advanceTokenBeyondIdentifier();
+
+          _verifyToken('(');
+          final argCount = compileExpressionList();
+          _verifyToken(')');
+          _writeLn('call $identifier.$subroutineName $argCount');
           break;
         default: // Do nothing
+
       }
     }
   }

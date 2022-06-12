@@ -71,7 +71,7 @@ void main(List<String> arguments) async {
     final pathSegments = file.path.split('/');
     final lastPathSegment = pathSegments.removeLast();
     pathSegments.add(lastPathSegment.replaceFirst(
-        '.jack', '.xml', lastPathSegment.length - 5));
+        '.jack', '.vm', lastPathSegment.length - 5));
 
     final output = File(pathSegments.join('/'));
     print('Compiling "${output.path}"');
