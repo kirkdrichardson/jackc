@@ -345,12 +345,13 @@ class CompilationEngine implements ICompilationEngine {
     }
 
     if (unaryOp.containsKey(token)) {
+      _advanceToken();
       compileTerm();
 
       if (token == '-') {
         _writeLn('neg');
-        _advanceToken();
       } else if (token == '~') {
+        // todo - boolean negation (bitwise for integers)
         throw UnimplementedError();
       }
       return;
