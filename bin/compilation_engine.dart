@@ -316,7 +316,6 @@ class CompilationEngine implements ICompilationEngine {
   void compileSubroutineBody() {
     _verifyToken('{');
     while (_currentToken == 'var') {
-      // todo - convert from xml to vm
       compileVarDec();
     }
     compileStatements();
@@ -398,9 +397,7 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileVarDec() {
-    _writeLn('<varDec>');
     _processVarDec('var', VarScope.subroutine);
-    _writeLn('</varDec>');
   }
 
   @override
@@ -538,9 +535,15 @@ class CompilationEngine implements ICompilationEngine {
   }
 
   /// Processes multiple inline var declarations for class and local vars, where
-  /// [kind] is the kind of declaration, i.e. "field", "var", "static", "arg".
+  /// [kind] is the kind of declaration, i.e. "field", "var", "static".
   void _processVarDec(String kind, VarScope scope) {
-    _process(kind);
+    // Check that the kind is valid
+    final validKinds = ["field", "var", "static"];
+    if (!["field", "var", "static"].contains(kind)) {
+      throw Exception('Expected one of $validKinds but got $kind');
+    }
+
+    _advanceToken();
 
     // We need to save the type in order to
     //    1. add it to the relevant symbol table, and
@@ -551,21 +554,21 @@ class CompilationEngine implements ICompilationEngine {
     // Here, we need both the kind (field) and type (j) to add i and j to the
     // _classTable as independent entries.
     final type = _getTypeOrThrow();
-    _process(type);
+    _advanceToken();
 
     var varName = _currentToken;
     _addSymbolTableEntry(scope, varName, type, kind);
-    _processIdentifier(isDeclaration: true);
+    _advanceTokenBeyondIdentifier();
 
     // Support multiple inline var declarations, such as "field int foo, bar;"
     bool hasAdditionalVars() => _currentToken == ',';
     while (hasAdditionalVars()) {
-      _process(_currentToken);
+      _advanceToken();
       varName = _currentToken;
       _addSymbolTableEntry(scope, varName, type, kind);
-      _processIdentifier(isDeclaration: true);
+      _advanceTokenBeyondIdentifier();
     }
-    _process(';');
+    _verifyToken(';');
   }
 
   void _addSymbolTableEntry(
