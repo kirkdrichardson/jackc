@@ -4,6 +4,7 @@ import 'constants.dart';
 import 'exceptions.dart';
 import 'symbol_table.dart';
 import 'tokenizer.dart';
+import 'vm_writer.dart';
 
 // TODO: make all fields private and just expose a compile() method.
 abstract class ICompilationEngine {
@@ -64,8 +65,8 @@ abstract class ICompilationEngine {
 
 class CompilationEngine implements ICompilationEngine {
   final ITokenizer tokenizer;
-  final RandomAccessFile _raFile;
   String _currentToken;
+  final IVMWriter writer;
 
   /// Name of the class being compiled. Used to providing this argument.
   String? _currentClassName;
@@ -82,9 +83,9 @@ class CompilationEngine implements ICompilationEngine {
   TokenType get tokenType => tokenizer.tokenType();
 
   /// Opens the input .jack file and gets ready to tokenize it
-  CompilationEngine(this.tokenizer, File outputFile)
-      : _raFile = outputFile.openSync(mode: FileMode.write),
-        _currentToken = tokenizer.advance();
+  CompilationEngine(this.tokenizer, String outputFile)
+      : _currentToken = tokenizer.advance(),
+        writer = VMWriter(outputFile);
 
   @override
   void compileClass() {
@@ -107,7 +108,7 @@ class CompilationEngine implements ICompilationEngine {
         _selectTokenToProcess(['constructor', 'function', 'method']) != null);
 
     _verifyToken('}', advanceToken: false);
-    _raFile.closeSync();
+    writer.close();
   }
 
   @override
@@ -117,9 +118,9 @@ class CompilationEngine implements ICompilationEngine {
       return;
     }
 
-    _writeLn('<classVarDec>');
+    writer.tempRemove('<classVarDec>');
     _processVarDec(tokenToProcess, VarScope.clazz);
-    _writeLn('</classVarDec>');
+    writer.tempRemove('</classVarDec>');
   }
 
   @override
@@ -128,7 +129,7 @@ class CompilationEngine implements ICompilationEngine {
     compileExpression();
     // Calling a subroutine above will have pushed a value to the stack, so
     // we want to discard it.
-    _writeLn('pop temp 0');
+    writer.tempRemove('pop temp 0');
     _verifyToken(';');
   }
 
@@ -143,19 +144,19 @@ class CompilationEngine implements ICompilationEngine {
 
       switch (operator) {
         case '+':
-          _writeLn('add');
+          writer.tempRemove('add');
           break;
         case '-':
-          _writeLn('subtract');
+          writer.tempRemove('subtract');
           break;
         case '*':
-          _writeLn('call Math.multiply 2');
+          writer.tempRemove('call Math.multiply 2');
           break;
         case '/':
-          _writeLn('call Math.divide 2');
+          writer.tempRemove('call Math.divide 2');
           break;
         // case '-':
-        //   _writeLn('call Math.multiply 2');
+        //   writer.tempRemove('call Math.multiply 2');
         //   break;
         default:
           throw UnimplementedError('Operator "$operator" not implemented');
@@ -180,7 +181,7 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileIf() {
-    _writeLn('<ifStatement>');
+    writer.tempRemove('<ifStatement>');
     _process('if');
     _process('(');
     compileExpression();
@@ -195,12 +196,12 @@ class CompilationEngine implements ICompilationEngine {
       compileStatements();
       _process('}');
     }
-    _writeLn('</ifStatement>');
+    writer.tempRemove('</ifStatement>');
   }
 
   @override
   void compileLet() {
-    _writeLn('<letStatement>');
+    writer.tempRemove('<letStatement>');
     _process('let');
     _processIdentifier(isDeclaration: false);
     if (_currentToken == '[') {
@@ -211,7 +212,7 @@ class CompilationEngine implements ICompilationEngine {
     _process('=');
     compileExpression();
     _process(';');
-    _writeLn('</letStatement>');
+    writer.tempRemove('</letStatement>');
   }
 
   @override
@@ -240,10 +241,10 @@ class CompilationEngine implements ICompilationEngine {
     } else {
       // If we have a void return, we need to push a default value to fulfill
       // the function call and return contract.
-      _writeLn('push constant 0');
+      writer.tempRemove('push constant 0');
     }
     _verifyToken(';');
-    _writeLn('return');
+    writer.tempRemove('return');
   }
 
   @override
@@ -301,7 +302,7 @@ class CompilationEngine implements ICompilationEngine {
     _currentSubroutineName = _currentToken;
     _advanceTokenBeyondIdentifier();
 
-    _writeLn(
+    writer.tempRemove(
         'function $_currentClassName.$_currentSubroutineName ${_subroutineTable.varCount('arg')}');
 
     _verifyToken('(');
@@ -338,7 +339,7 @@ class CompilationEngine implements ICompilationEngine {
         throw InvalidKeywordConstantException(token);
       }
 
-      _writeLn('push constant $token');
+      writer.tempRemove('push constant $token');
       _advanceToken();
       return;
     }
@@ -348,7 +349,7 @@ class CompilationEngine implements ICompilationEngine {
       compileTerm();
 
       if (token == '-') {
-        _writeLn('neg');
+        writer.tempRemove('neg');
       } else if (token == '~') {
         // todo - boolean negation (bitwise for integers)
         throw UnimplementedError();
@@ -387,7 +388,7 @@ class CompilationEngine implements ICompilationEngine {
           _verifyToken('(');
           final argCount = compileExpressionList();
           _verifyToken(')');
-          _writeLn('call $identifier.$subroutineName $argCount');
+          writer.tempRemove('call $identifier.$subroutineName $argCount');
           break;
         default: // Do nothing
 
@@ -402,7 +403,7 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileWhile() {
-    _writeLn('<whileStatement>');
+    writer.tempRemove('<whileStatement>');
     _process('while');
     _process('(');
     compileExpression();
@@ -410,7 +411,7 @@ class CompilationEngine implements ICompilationEngine {
     _process('{');
     compileStatements();
     _process('}');
-    _writeLn('</whileStatement>');
+    writer.tempRemove('</whileStatement>');
   }
 
 //******************************************************************************
@@ -514,7 +515,7 @@ class CompilationEngine implements ICompilationEngine {
     }
 
     if (xmlOutput != null && xmlOutput.trim().isNotEmpty) {
-      _writeLn(xmlOutput);
+      writer.tempRemove(xmlOutput);
     }
 
     if (advanceToken) {
@@ -619,11 +620,6 @@ class CompilationEngine implements ICompilationEngine {
     }
 
     return null;
-  }
-
-  /// Writes string to output and appends a newline.
-  void _writeLn(String str) {
-    _raFile.writeStringSync(str + '\n');
   }
 }
 

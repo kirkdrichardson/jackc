@@ -73,9 +73,9 @@ void main(List<String> arguments) async {
     pathSegments.add(lastPathSegment.replaceFirst(
         '.jack', '.vm', lastPathSegment.length - 5));
 
-    final output = File(pathSegments.join('/'));
-    print('Compiling "${output.path}"');
+    final outputPath = pathSegments.join('/');
+    print('Compiling "$outputPath"');
 
-    CompilationEngine(Tokenizer(file), output).compileClass();
+    CompilationEngine(Tokenizer(file), outputPath).compileClass();
   }
 }
