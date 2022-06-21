@@ -349,16 +349,31 @@ class CompilationEngine implements ICompilationEngine {
     final token = _currentToken;
     final type = tokenizer.tokenType();
 
-    // Process top-level types that don't require any additional logic.
-    if (type == TokenType.intConst ||
-        type == TokenType.stringConst ||
-        type == TokenType.keyword) {
-      // If we have a keyword, make sure it is a keyword constant.
-      if (type == TokenType.keyword && !keywordConstants.containsKey(token)) {
+    if (type == TokenType.intConst) {
+      writer.writePush(MemorySegment.constant, int.parse(token));
+      _advanceToken();
+      return;
+    }
+
+    if (type == TokenType.stringConst) {
+      // todo
+
+      throw UnimplementedError();
+      // _advanceToken();
+      // return;
+    }
+
+    if (type == TokenType.keyword) {
+      if (token == 'null' || token == 'false') {
+        writer.writePush(MemorySegment.constant, 0);
+      } else if (token == 'true') {
+        writer.writePush(MemorySegment.constant, 1);
+        writer.writeArithmetic(Command.neg);
+      } else if (token == 'this') {
+        writer.writePush(MemorySegment.pointer, 0);
+      } else {
         throw InvalidKeywordConstantException(token);
       }
-
-      writer.tempRemove('push constant $token');
       _advanceToken();
       return;
     }

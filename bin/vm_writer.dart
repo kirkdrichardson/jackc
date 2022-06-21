@@ -12,6 +12,7 @@ abstract class IVMWriter {
   void writeReturn();
   void close();
 
+  @Deprecated('remove once transitioned to vm writer')
   void tempRemove(String s);
 }
 
@@ -67,7 +68,37 @@ class VMWriter implements IVMWriter {
 
   @override
   void writeArithmetic(Command cmd) {
-    // TODO: implement writeArithmetic
+    switch (cmd) {
+      case Command.add:
+        throw UnimplementedError();
+        break;
+      case Command.and:
+        throw UnimplementedError();
+        break;
+      case Command.eq:
+        throw UnimplementedError();
+        break;
+      case Command.gt:
+        throw UnimplementedError();
+        break;
+      case Command.lt:
+        throw UnimplementedError();
+        break;
+      case Command.neg:
+        _writeLn('neg');
+        break;
+      case Command.not:
+        throw UnimplementedError();
+        break;
+      case Command.or:
+        throw UnimplementedError();
+        break;
+      case Command.sub:
+        throw UnimplementedError();
+        break;
+      default:
+        throw Exception('Unrecognized Command $cmd');
+    }
   }
 
   @override
