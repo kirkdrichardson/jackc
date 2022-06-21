@@ -26,6 +26,22 @@ enum MemorySegment {
   temp,
 }
 
+extension Value on MemorySegment {
+  String value() {
+    final asString = toString().replaceFirst(r'MemorySegment.', '');
+
+    // Manually handle values that are reserved words in Dart.
+    switch (asString) {
+      case 'statik':
+        return 'static';
+      case 'thiz':
+        return 'this';
+      default:
+        return asString;
+    }
+  }
+}
+
 enum Command {
   add,
   sub,
@@ -81,12 +97,12 @@ class VMWriter implements IVMWriter {
 
   @override
   void writePop(MemorySegment segment, int index) {
-    // TODO: implement writePop
+    _writeLn('pop ${segment.value()} $index');
   }
 
   @override
   void writePush(MemorySegment segment, int index) {
-    // TODO: implement writePush
+    _writeLn('push ${segment.value()} $index');
   }
 
   @override

@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'constants.dart';
 import 'exceptions.dart';
 import 'symbol_table.dart';
@@ -201,18 +199,39 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileLet() {
-    writer.tempRemove('<letStatement>');
-    _process('let');
-    _processIdentifier(isDeclaration: false);
+    _verifyToken('let');
+    final varInfo = _getVarOrThrow(_currentToken);
+    _advanceTokenBeyondIdentifier();
+
+    // todo - handle arrays
     if (_currentToken == '[') {
       _process('[');
       compileExpression();
       _process(']');
     }
-    _process('=');
+    _verifyToken('=');
     compileExpression();
-    _process(';');
-    writer.tempRemove('</letStatement>');
+
+    MemorySegment segment;
+    switch (varInfo.kind) {
+      case 'static':
+        segment = MemorySegment.statik;
+        break;
+      case 'field':
+        segment = MemorySegment.thiz;
+        break;
+      case 'arg':
+        segment = MemorySegment.argument;
+        break;
+      case 'var':
+        segment = MemorySegment.local;
+        break;
+      default:
+        throw Exception('Unrecognized kind "$kind". Unable to map mem segment');
+    }
+
+    writer.writePop(segment, varInfo.index);
+    _verifyToken(';');
   }
 
   @override
@@ -241,7 +260,7 @@ class CompilationEngine implements ICompilationEngine {
     } else {
       // If we have a void return, we need to push a default value to fulfill
       // the function call and return contract.
-      writer.tempRemove('push constant 0');
+      writer.writePush(MemorySegment.constant, 0);
     }
     _verifyToken(';');
     writer.tempRemove('return');
@@ -446,6 +465,7 @@ class CompilationEngine implements ICompilationEngine {
 
   /// General process to write a token under one of the top-level types and
   /// advance the tokenizer.
+  @Deprecated('remove when outputting vm lang')
   void _process(String token,
       {bool advanceToken = true, _IdentifierType? identifierType}) {
     _verifyToken(token, advanceToken: false);
@@ -524,6 +544,7 @@ class CompilationEngine implements ICompilationEngine {
   }
 
   /// Calls the [_process] method if we have identifier, otherwise throws.
+  @Deprecated('remove when outputting vm lang')
   void _processIdentifier({required bool isDeclaration}) {
     if (tokenType == TokenType.identifier) {
       _process(_currentToken,
@@ -537,6 +558,7 @@ class CompilationEngine implements ICompilationEngine {
 
   /// Processes multiple inline var declarations for class and local vars, where
   /// [kind] is the kind of declaration, i.e. "field", "var", "static".
+  @Deprecated('remove when outputting vm lang')
   void _processVarDec(String kind, VarScope scope) {
     // Check that the kind is valid
     final validKinds = ["field", "var", "static"];
@@ -585,14 +607,6 @@ class CompilationEngine implements ICompilationEngine {
     }
   }
 
-  /// Processes the current type or throws an exception if  [_currentToken] is
-  /// not a valid type.
-  void _processType() {
-    _process(_getTypeOrThrow(),
-        identifierType:
-            tokenType == TokenType.identifier ? _IdentifierType.usage : null);
-  }
-
   /// Returns the [_currentToken] if is a valid type.
   String _getTypeOrThrow() {
     if (_isType()) {
@@ -600,6 +614,18 @@ class CompilationEngine implements ICompilationEngine {
     } else {
       throw InvalidTypeException(_currentToken);
     }
+  }
+
+  /// Finds the [VarInfo] for a given variable name by looking first in the
+  /// subroutine symbol table, then the class table. Throws if not found.
+  VarInfo _getVarOrThrow(String varName) {
+    final varInfo = _subroutineTable.find(varName) ?? _classTable.find(varName);
+
+    if (varInfo == null) {
+      throw UndeclaredIdentifierException(varName);
+    }
+
+    return varInfo;
   }
 
   /// A utility to determine if the [_currentToken] is a valid type.
