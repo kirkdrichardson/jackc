@@ -127,7 +127,7 @@ class CompilationEngine implements ICompilationEngine {
     compileExpression();
     // Calling a subroutine above will have pushed a value to the stack, so
     // we want to discard it.
-    writer.tempRemove('pop temp 0');
+    writer.writePop(MemorySegment.temp, 0);
     _verifyToken(';');
   }
 
@@ -422,10 +422,9 @@ class CompilationEngine implements ICompilationEngine {
           _verifyToken('(');
           final argCount = compileExpressionList();
           _verifyToken(')');
-          writer.tempRemove('call $identifier.$subroutineName $argCount');
+          writer.writeCall('$identifier.$subroutineName', argCount);
           break;
         default: // Do nothing
-
       }
     }
   }

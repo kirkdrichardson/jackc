@@ -103,7 +103,7 @@ class VMWriter implements IVMWriter {
 
   @override
   void writeCall(String name, int nArgs) {
-    // TODO: implement writeCall
+    _writeLn('call $name $nArgs');
   }
 
   @override
