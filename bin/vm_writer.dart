@@ -55,6 +55,12 @@ enum Command {
   not,
 }
 
+extension on Command {
+  /// Translates a [Command] into a valid arithmetic-logic operation in the VM
+  /// language.
+  String value() => toString().replaceFirst(r'Command.', '');
+}
+
 class VMWriter implements IVMWriter {
   final RandomAccessFile _raFile;
 
@@ -68,37 +74,7 @@ class VMWriter implements IVMWriter {
 
   @override
   void writeArithmetic(Command cmd) {
-    switch (cmd) {
-      case Command.add:
-        throw UnimplementedError();
-        break;
-      case Command.and:
-        throw UnimplementedError();
-        break;
-      case Command.eq:
-        throw UnimplementedError();
-        break;
-      case Command.gt:
-        throw UnimplementedError();
-        break;
-      case Command.lt:
-        throw UnimplementedError();
-        break;
-      case Command.neg:
-        _writeLn('neg');
-        break;
-      case Command.not:
-        throw UnimplementedError();
-        break;
-      case Command.or:
-        throw UnimplementedError();
-        break;
-      case Command.sub:
-        throw UnimplementedError();
-        break;
-      default:
-        throw Exception('Unrecognized Command $cmd');
-    }
+    _writeLn(cmd.value());
   }
 
   @override
@@ -123,7 +99,7 @@ class VMWriter implements IVMWriter {
 
   @override
   void writeLabel(String label) {
-    // TODO: implement writeLabel
+    _writeLn('label $label');
   }
 
   @override

@@ -1,3 +1,5 @@
+// ignore_for_file: non_constant_identifier_names
+
 import 'constants.dart';
 import 'exceptions.dart';
 import 'symbol_table.dart';
@@ -62,8 +64,12 @@ abstract class ICompilationEngine {
 }
 
 class CompilationEngine implements ICompilationEngine {
+  // Suffix for creating unique labels for control-flow statements.
+  static int _labelCount = 0;
+
   final ITokenizer tokenizer;
   String _currentToken;
+
   final IVMWriter writer;
 
   /// Name of the class being compiled. Used to providing this argument.
@@ -79,6 +85,8 @@ class CompilationEngine implements ICompilationEngine {
   final ISymbolTable _subroutineTable = SymbolTable();
 
   TokenType get tokenType => tokenizer.tokenType();
+
+  int labelSuffix() => ++_labelCount;
 
   /// Opens the input .jack file and gets ready to tokenize it
   CompilationEngine(this.tokenizer, String outputFile)
@@ -142,20 +150,32 @@ class CompilationEngine implements ICompilationEngine {
 
       switch (operator) {
         case '+':
-          writer.tempRemove('add');
+          writer.writeArithmetic(Command.add);
           break;
         case '-':
-          writer.tempRemove('subtract');
+          writer.writeArithmetic(Command.sub);
           break;
         case '*':
-          writer.tempRemove('call Math.multiply 2');
+          writer.writeCall('Math.multiply', 2);
           break;
         case '/':
-          writer.tempRemove('call Math.divide 2');
+          writer.writeCall('Math.divide', 2);
           break;
-        // case '-':
-        //   writer.tempRemove('call Math.multiply 2');
-        //   break;
+        case '&':
+          writer.writeArithmetic(Command.and);
+          break;
+        case '|':
+          writer.writeArithmetic(Command.or);
+          break;
+        case '<':
+          writer.writeArithmetic(Command.lt);
+          break;
+        case '>':
+          writer.writeArithmetic(Command.gt);
+          break;
+        case '=':
+          writer.writeArithmetic(Command.eq);
+          break;
         default:
           throw UnimplementedError('Operator "$operator" not implemented');
       }
@@ -383,10 +403,9 @@ class CompilationEngine implements ICompilationEngine {
       compileTerm();
 
       if (token == '-') {
-        writer.tempRemove('neg');
+        writer.writeArithmetic(Command.neg);
       } else if (token == '~') {
-        // todo - boolean negation (bitwise for integers)
-        throw UnimplementedError();
+        writer.writeArithmetic(Command.not);
       }
       return;
     }
@@ -436,15 +455,35 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileWhile() {
-    writer.tempRemove('<whileStatement>');
-    _process('while');
-    _process('(');
+    _verifyToken('while');
+    _verifyToken('(');
+
+    // Generate the labels we will use to implement branching logic
+    final suffix = labelSuffix();
+    final L1 = 'WHILE_START_$suffix';
+    final L2 = 'WHILE_END_$suffix';
+
+    // Write the first label to return to our test condition.
+    writer.writeLabel(L1);
+    // Push the value of the while(__expression__) onto the stack.
     compileExpression();
-    _process(')');
-    _process('{');
+    _verifyToken(')');
+    _verifyToken('{');
+
+    // NOT the value of the compiled expression on the stack so we know if we
+    // should jump over the logic between here and the next label, i.e. the
+    // end of the while statement.
+    writer.writeArithmetic(Command.not);
+
+    // If !expression
+    writer.writeIf(L2);
     compileStatements();
-    _process('}');
-    writer.tempRemove('</whileStatement>');
+    // Return to evaluate while expression again.
+    writer.writeGoto(L1);
+
+    // Anchor our terminating label at the end.
+    writer.writeLabel(L2);
+    _verifyToken('}');
   }
 
 //******************************************************************************
