@@ -114,18 +114,4 @@ class SymbolTable implements ISymbolTable {
 
   @override
   int varCount(String kind) => _countForKind[kind] ?? -1;
-
-  //////////////////////////////////////////////////////////////////////////////
-  //////////////////       Private Utility      ////////////////////////////////
-  //////////////////////////////////////////////////////////////////////////////
-
-  // VarInfo _getVarOrThrow(String name) {
-  //   final v = _table[name];
-  //   if (v == null) {
-  //     throw Exception('Var $name not found in SymbolTable');
-  //   }
-
-  //   return v;
-  // }
-
 }

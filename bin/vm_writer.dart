@@ -11,9 +11,6 @@ abstract class IVMWriter {
   void writeFunction(String name, int nVars);
   void writeReturn();
   void close();
-
-  @Deprecated('remove once transitioned to vm writer')
-  void tempRemove(String s);
 }
 
 enum MemorySegment {
@@ -84,17 +81,17 @@ class VMWriter implements IVMWriter {
 
   @override
   void writeFunction(String name, int nVars) {
-    // TODO: implement writeFunction
+    _writeLn('function $name $nVars');
   }
 
   @override
   void writeGoto(String label) {
-    // TODO: implement writeGoto
+    _writeLn('goto $label');
   }
 
   @override
   void writeIf(String label) {
-    // TODO: implement writeIf
+    _writeLn('if-goto $label');
   }
 
   @override
@@ -114,13 +111,7 @@ class VMWriter implements IVMWriter {
 
   @override
   void writeReturn() {
-    // TODO: implement writeReturn
-  }
-
-  /// todo - remove this once transitioned off of xml output
-  @override
-  void tempRemove(String str) {
-    _writeLn(str);
+    _writeLn('return');
   }
 
   /// Writes string to output and appends a newline.

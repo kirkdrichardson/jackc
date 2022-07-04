@@ -101,7 +101,7 @@ class CompilationEngine implements ICompilationEngine {
     _classTable.reset();
     _subroutineTable.reset();
 
-    _processIdentifier(isDeclaration: true);
+    _advanceTokenBeyondIdentifier();
     _verifyToken('{');
 
     do {
@@ -124,9 +124,7 @@ class CompilationEngine implements ICompilationEngine {
       return;
     }
 
-    writer.tempRemove('<classVarDec>');
     _processVarDec(tokenToProcess, VarScope.clazz);
-    writer.tempRemove('</classVarDec>');
   }
 
   @override
@@ -199,22 +197,39 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileIf() {
-    writer.tempRemove('<ifStatement>');
-    _process('if');
-    _process('(');
+    _verifyToken('if');
+    _verifyToken('(');
+
+    // Generate the labels we will use to implement branching logic
+    final suffix = labelSuffix();
+    final L1 = 'IF_START_$suffix';
+    final L2 = 'IF_END_$suffix';
+
+    // Evaluate the if condition and negate the value
     compileExpression();
-    _process(')');
-    _process('{');
+    writer.writeArithmetic(Command.not);
+    writer.writeIf(L1);
+
+    _verifyToken(')');
+    _verifyToken('{');
+
     compileStatements();
-    _process('}');
+    _verifyToken('}');
+
+    // If we haven't skipped to L1, we've evaluated the if block and skip to end
+    writer.writeGoto(L2);
+
+    // We jump here and conditionally compile the else statement if present.
+    writer.writeLabel(L1);
 
     if (_currentToken == 'else') {
-      _process('else');
-      _process('{');
+      _verifyToken('else');
+      _verifyToken('{');
       compileStatements();
-      _process('}');
+      _verifyToken('}');
     }
-    writer.tempRemove('</ifStatement>');
+
+    writer.writeLabel(L2);
   }
 
   @override
@@ -283,7 +298,7 @@ class CompilationEngine implements ICompilationEngine {
       writer.writePush(MemorySegment.constant, 0);
     }
     _verifyToken(';');
-    writer.tempRemove('return');
+    writer.writeReturn();
   }
 
   @override
@@ -516,102 +531,8 @@ class CompilationEngine implements ICompilationEngine {
     }
   }
 
-  /// General process to write a token under one of the top-level types and
-  /// advance the tokenizer.
-  @Deprecated('remove when outputting vm lang')
-  void _process(String token,
-      {bool advanceToken = true, _IdentifierType? identifierType}) {
-    _verifyToken(token, advanceToken: false);
-
-    final tokenType = tokenizer.tokenType();
-    String? xmlOutput;
-
-    switch (tokenType) {
-      case TokenType.identifier:
-        if (identifierType == null) {
-          throw Exception(
-              'Must pass _IdentifierType when processing identifier "$_currentToken".');
-        }
-
-        final identifier = tokenizer.identifier();
-
-        VarInfo? info;
-        info = _subroutineTable.find(identifier);
-        info ??= _classTable.find(identifier);
-
-        if (info == null &&
-            identifier != _currentClassName &&
-            identifier != _currentSubroutineName) {
-          throw Exception(
-              'Identifier not found in symbol table and is not current class "$identifier"');
-        }
-
-        final category = info?.kind ??
-            (identifier == _currentClassName ? 'class' : 'subroutine');
-
-        final b = StringBuffer();
-        b.writeln('<identifier>');
-        b.writeln('<name> $identifier </name>');
-        // field, static, var, arg, class, or subroutine
-        b.writeln('<category> $category </category>');
-        // Only if this is not a class or subroutine
-        if (info != null) {
-          b.writeln('<index> ${info.index} </index>');
-        }
-        // declared | used
-        b.writeln(
-            '<usage> ${identifierType == _IdentifierType.declaration ? "declaration" : "used"} </usage>');
-
-        b.writeln('</identifier>');
-
-        // xmlOutput = b.toString();
-        break;
-      case TokenType.intConst:
-        xmlOutput =
-            '<integerConstant> ${tokenizer.intVal()} </integerConstant>';
-        break;
-      case TokenType.keyword:
-        // todo - we could probably have tokenizer.keyword return the value directly
-        xmlOutput = '<keyword> ${tokenizer.keyword().value()} </keyword>';
-        break;
-      case TokenType.stringConst:
-        xmlOutput =
-            '<stringConstant> ${tokenizer.stringVal()} </stringConstant>';
-        break;
-      case TokenType.symbol:
-        final xmlSymbol =
-            specialSymbols[tokenizer.symbol()] ?? tokenizer.symbol();
-        xmlOutput = '<symbol> $xmlSymbol </symbol>';
-        break;
-      default:
-        throw Exception('Unknown token type: $tokenType');
-    }
-
-    if (xmlOutput != null && xmlOutput.trim().isNotEmpty) {
-      writer.tempRemove(xmlOutput);
-    }
-
-    if (advanceToken) {
-      _advanceToken();
-    }
-  }
-
-  /// Calls the [_process] method if we have identifier, otherwise throws.
-  @Deprecated('remove when outputting vm lang')
-  void _processIdentifier({required bool isDeclaration}) {
-    if (tokenType == TokenType.identifier) {
-      _process(_currentToken,
-          identifierType: isDeclaration
-              ? _IdentifierType.declaration
-              : _IdentifierType.usage);
-    } else {
-      throw InvalidIdentifierException(_currentToken);
-    }
-  }
-
   /// Processes multiple inline var declarations for class and local vars, where
   /// [kind] is the kind of declaration, i.e. "field", "var", "static".
-  @Deprecated('remove when outputting vm lang')
   void _processVarDec(String kind, VarScope scope) {
     // Check that the kind is valid
     final validKinds = ["field", "var", "static"];
@@ -704,10 +625,3 @@ class CompilationEngine implements ICompilationEngine {
 
 /// Only 2 scopes are currently supported: class and subroutine.
 enum VarScope { clazz, subroutine }
-
-/// Used when processing an identifier, to indicate whether variable is being
-/// declared or used.
-enum _IdentifierType {
-  declaration,
-  usage,
-}
