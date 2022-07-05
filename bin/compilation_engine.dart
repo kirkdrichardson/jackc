@@ -199,15 +199,16 @@ class CompilationEngine implements ICompilationEngine {
   void compileIf() {
     _verifyToken('if');
     _verifyToken('(');
+    // Evaluate the if condition and negate the value
+    compileExpression();
+    writer.writeArithmetic(Command.not);
 
     // Generate the labels we will use to implement branching logic
     final suffix = labelSuffix();
     final L1 = 'IF_START_$suffix';
     final L2 = 'IF_END_$suffix';
 
-    // Evaluate the if condition and negate the value
-    compileExpression();
-    writer.writeArithmetic(Command.not);
+    // Conditionally jump to L1
     writer.writeIf(L1);
 
     _verifyToken(')');
@@ -345,8 +346,18 @@ class CompilationEngine implements ICompilationEngine {
     compileParameterList();
     _verifyToken(')');
 
+    // Before generating any code, we need to compile all the var declarations
+    // so we know how many local vars the fn has.
+    _verifyToken('{');
+    while (_currentToken == 'var') {
+      compileVarDec();
+    }
+
+    // Now we can reference the symbol table and write the fn declaration
+    // with the appropriate number of local vars. This allows the compiler's
+    // backend to allocate the appropriate length of the local memory segment.
     writer.writeFunction('$_currentClassName.$_currentSubroutineName',
-        _subroutineTable.varCount('arg'));
+        _subroutineTable.varCount('var'));
 
     compileSubroutineBody();
 
@@ -355,10 +366,6 @@ class CompilationEngine implements ICompilationEngine {
 
   @override
   void compileSubroutineBody() {
-    _verifyToken('{');
-    while (_currentToken == 'var') {
-      compileVarDec();
-    }
     compileStatements();
     _verifyToken('}');
   }
