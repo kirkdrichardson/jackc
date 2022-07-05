@@ -240,30 +240,14 @@ class CompilationEngine implements ICompilationEngine {
 
     // todo - handle arrays
     if (_currentToken == '[') {
-      _process('[');
+      _verifyToken('[');
       compileExpression();
-      _process(']');
+      _verifyToken(']');
     }
     _verifyToken('=');
     compileExpression();
 
-    MemorySegment segment;
-    switch (varInfo.kind) {
-      case 'static':
-        segment = MemorySegment.statik;
-        break;
-      case 'field':
-        segment = MemorySegment.thiz;
-        break;
-      case 'arg':
-        segment = MemorySegment.argument;
-        break;
-      case 'var':
-        segment = MemorySegment.local;
-        break;
-      default:
-        throw Exception('Unrecognized kind "$kind". Unable to map mem segment');
-    }
+    final segment = _segmentFromKind(varInfo.kind);
 
     writer.writePop(segment, varInfo.index);
     _verifyToken(';');
@@ -609,6 +593,21 @@ class CompilationEngine implements ICompilationEngine {
   bool _isType() =>
       (tokenType == TokenType.identifier) ||
       (tokenType == TokenType.keyword && types.contains(_currentToken));
+
+  MemorySegment _segmentFromKind(String kind) {
+    switch (kind) {
+      case 'static':
+        return MemorySegment.statik;
+      case 'field':
+        return MemorySegment.thiz;
+      case 'arg':
+        return MemorySegment.argument;
+      case 'var':
+        return MemorySegment.local;
+      default:
+        throw Exception('Unrecognized kind "$kind". Unable to map mem segment');
+    }
+  }
 
   /// From a list of valid tokens, returns the token to process, or null if
   /// none were valid.
