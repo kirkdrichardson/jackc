@@ -340,12 +340,14 @@ class CompilationEngine implements ICompilationEngine {
     _currentSubroutineName = _currentToken;
     _advanceTokenBeyondIdentifier();
 
-    writer.tempRemove(
-        'function $_currentClassName.$_currentSubroutineName ${_subroutineTable.varCount('arg')}');
-
+    // We need to compile the parameter list before writing the function.
     _verifyToken('(');
     compileParameterList();
     _verifyToken(')');
+
+    writer.writeFunction('$_currentClassName.$_currentSubroutineName',
+        _subroutineTable.varCount('arg'));
+
     compileSubroutineBody();
 
     _currentSubroutineName = null;
