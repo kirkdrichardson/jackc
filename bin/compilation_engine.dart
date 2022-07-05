@@ -444,7 +444,11 @@ class CompilationEngine implements ICompilationEngine {
           _verifyToken(')');
           writer.writeCall('$identifier.$subroutineName', argCount);
           break;
-        default: // Do nothing
+        default:
+          // Get the value and push it on the stack.
+          final info = _getVarOrThrow(identifier);
+          writer.writePush(_segmentFromKind(info.kind), info.index);
+          break;
       }
     }
   }
