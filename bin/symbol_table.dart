@@ -26,10 +26,17 @@ abstract class ISymbolTable {
 }
 
 class VarInfo {
+  /// User-defined name.
   String name;
+
+  /// Type: int, boolean, char, or class name identifier.
   String type;
+
+  /// Type of variable: static, field, arg, or var.
   String kind;
   int index;
+
+  /// Index within the memory segment.
   VarInfo({
     required this.name,
     required this.type,

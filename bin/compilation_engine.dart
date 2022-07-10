@@ -359,6 +359,20 @@ class CompilationEngine implements ICompilationEngine {
     writer.writeFunction('$_currentClassName.$_currentSubroutineName',
         _subroutineTable.varCount('var'));
 
+    if ('constructor' == subroutineKind) {
+      writer.writePush(MemorySegment.constant, _classTable.varCount('field'));
+      writer.writeCall('Memory.alloc', 1);
+      writer.writePop(MemorySegment.pointer, 0);
+    }
+
+    if (subroutineKind == 'method') {
+      // If we have a method, we need to align the THIS pointer to to value of
+      // argument 0, which will contain the base address of the object on which
+      // the method was called to operate per the method calling contract.
+      writer.writePush(MemorySegment.argument, 0);
+      writer.writePop(MemorySegment.pointer, 0);
+    }
+
     compileSubroutineBody();
 
     _currentSubroutineName = null;
@@ -437,19 +451,55 @@ class CompilationEngine implements ICompilationEngine {
           _verifyToken(']');
           break;
         case '(':
-          _verifyToken(nextToken);
-          compileExpressionList();
-          _verifyToken(')');
-          break;
         case '.':
-          _advanceToken();
-          final subroutineName = _currentToken;
-          _advanceTokenBeyondIdentifier();
+          // First determine if we have a method or function/constructor call.
+          final varInfo =
+              _subroutineTable.find(identifier) ?? _classTable.find(identifier);
+          final isMethod =
+              varInfo != null || identifier[0] != identifier[0].toUpperCase();
 
+          String? className;
+
+          if (isMethod) {
+            // If varInfo is defined, the call is in the form
+            // varName.methodName(exp1...) and we can push the symbol table
+            // mapping of varName. Otherwise, it is in the form
+            //  methodName(exp1...), and we push the a mapping of the current
+            // object.
+            if (varInfo != null) {
+              writer.writePush(_segmentFromKind(varInfo.kind), varInfo.index);
+            } else {
+              writer.writePush(MemorySegment.pointer, 0);
+            }
+            // If we have a method, we must note the [type] of class for when
+            // we write the fn call later.
+            className = varInfo?.type ?? _currentClassName;
+          }
+
+          String subroutineName;
+          if (nextToken == '.') {
+            // We have either varName.methodCall(...), ClassName.functionName,
+            // or ClassName.constructorName(...), so the subroutineName is the
+            // next token.
+            _advanceToken();
+            subroutineName = _currentToken;
+            _advanceTokenBeyondIdentifier();
+          } else {
+            // We have methodCall(...), so the current identifier == methodCall.
+            subroutineName = identifier;
+          }
+
+          // Compile the parameters.
           _verifyToken('(');
           final argCount = compileExpressionList();
           _verifyToken(')');
-          writer.writeCall('$identifier.$subroutineName', argCount);
+
+          writer.writeCall(
+            '${className ?? identifier}.$subroutineName',
+            // Methods push the additional "this" arg onto the stack.
+            argCount + (isMethod ? 1 : 0),
+          );
+
           break;
         default:
           // Get the value and push it on the stack.
