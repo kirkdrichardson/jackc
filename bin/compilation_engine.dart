@@ -398,11 +398,18 @@ class CompilationEngine implements ICompilationEngine {
     }
 
     if (type == TokenType.stringConst) {
-      // todo
+      final length = token.length;
+      // Create the String using the OS.
+      writer.writePush(MemorySegment.constant, length);
+      writer.writeCall('String.new', 1);
 
-      throw UnimplementedError();
-      // _advanceToken();
-      // return;
+      // Push each char onto the stack and append it to the string.
+      for (var i = 0; i < length; i++) {
+        writer.writePush(MemorySegment.constant, token.codeUnitAt(i));
+        writer.writeCall('String.appendChar', 2);
+      }
+      _advanceToken();
+      return;
     }
 
     if (type == TokenType.keyword) {
