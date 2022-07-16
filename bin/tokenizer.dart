@@ -83,7 +83,7 @@ class Tokenizer implements ITokenizer {
           _keywordMatcherRegEx.firstMatch(_fileContents.substring(_index));
       if (keywordMatch != null) {
         _currentTokenType = TokenType.keyword;
-        _currentToken = keywordMatch.group(0);
+        _currentToken = keywordMatch.group(0)?.trim();
         return _currentToken!;
       }
 
@@ -188,7 +188,7 @@ const _commentsMatcher =
 final _commentsMatcherRegEx = RegExp(_commentsMatcher, caseSensitive: false);
 final _intConstMatcherRegEx = RegExp(r'^\d+');
 const _keywordMatcher =
-    r'^(class|constructor|function|method|field|static|var|int|char|boolean|void|true|false|null|this|let|do|if|else|while|return)';
+    r'^(class|constructor|function|method|field|static|var|int|char|boolean|void|true|false|null|this|let|do|if|else|while|return)\s*(?!\w|\d+)';
 final _keywordMatcherRegEx = RegExp(_keywordMatcher, caseSensitive: true);
 const _identifierMatcher = r'^[_a-z]+[_a-z0-9]*';
 final _identifierMatcherRegEx =
