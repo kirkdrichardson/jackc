@@ -239,18 +239,34 @@ class CompilationEngine implements ICompilationEngine {
     final varInfo = _getVarOrThrow(_currentToken);
     _advanceTokenBeyondIdentifier();
 
-    // todo - handle arrays
-    if (_currentToken == '[') {
+    final isArrayAssignment = _currentToken == '[';
+
+    if (isArrayAssignment) {
       _verifyToken('[');
+      writer.writePush(_segmentFromKind(varInfo.kind), varInfo.index);
       compileExpression();
       _verifyToken(']');
+      writer.writeArithmetic(Command.add);
     }
+
     _verifyToken('=');
     compileExpression();
 
-    final segment = _segmentFromKind(varInfo.kind);
+    if (isArrayAssignment) {
+      // Put the value of expression2 in let arr[expression1] = expression2
+      // in temp 0
+      writer.writePop(MemorySegment.temp, 0);
+      // Now put the value (arr + expression1) in pointer 1, which will store
+      // the target address in the THAT pointer, RAM[4]
+      writer.writePop(MemorySegment.pointer, 1);
+      writer.writePush(MemorySegment.temp, 0);
+      writer.writePop(MemorySegment.that, 0);
+    } else {
+      // We aren't assigning an array value, so we can just assign to the
+      // original identifier.
+      writer.writePop(_segmentFromKind(varInfo.kind), varInfo.index);
+    }
 
-    writer.writePop(segment, varInfo.index);
     _verifyToken(';');
   }
 
@@ -454,8 +470,17 @@ class CompilationEngine implements ICompilationEngine {
       switch (nextToken) {
         case '[':
           _verifyToken('[');
+          // For the expression arr[expression], we want to
+          // push arr, push expression, add
+          // This will give us the value (arr + expression), which is the
+          // memory address we are targeting.
+          final info = _getVarOrThrow(identifier);
+          writer.writePush(_segmentFromKind(info.kind), info.index);
           compileExpression();
           _verifyToken(']');
+          writer.writeArithmetic(Command.add);
+          writer.writePop(MemorySegment.pointer, 1);
+          writer.writePush(MemorySegment.that, 0);
           break;
         case '(':
         case '.':
