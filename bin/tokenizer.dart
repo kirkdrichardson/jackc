@@ -128,7 +128,7 @@ class Tokenizer implements ITokenizer {
       commentOrWhitespaceMatch = _getFirstMatch(_commentsMatcherRegEx);
     }
 
-    return _index < _fileContents.length - 1;
+    return _index < _fileContents.length;
   }
 
   @override
