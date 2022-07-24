@@ -38,3 +38,8 @@ class SyntaxError extends CompilationException {
   SyntaxError(String expected, String actual)
       : super('Syntax Error: expected $expected but got $actual');
 }
+
+class UndeclaredIdentifierException extends CompilationException {
+  UndeclaredIdentifierException(String identifier)
+      : super('Declaration for variable "$identifier" not found');
+}

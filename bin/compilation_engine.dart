@@ -1,9 +1,10 @@
-import 'dart:io';
+// ignore_for_file: non_constant_identifier_names
 
 import 'constants.dart';
 import 'exceptions.dart';
 import 'symbol_table.dart';
 import 'tokenizer.dart';
+import 'vm_writer.dart';
 
 // TODO: make all fields private and just expose a compile() method.
 abstract class ICompilationEngine {
@@ -63,9 +64,13 @@ abstract class ICompilationEngine {
 }
 
 class CompilationEngine implements ICompilationEngine {
+  // Suffix for creating unique labels for control-flow statements.
+  static int _labelCount = 0;
+
   final ITokenizer tokenizer;
-  final RandomAccessFile _raFile;
   String _currentToken;
+
+  final IVMWriter writer;
 
   /// Name of the class being compiled. Used to providing this argument.
   String? _currentClassName;
@@ -81,21 +86,23 @@ class CompilationEngine implements ICompilationEngine {
 
   TokenType get tokenType => tokenizer.tokenType();
 
+  int labelSuffix() => ++_labelCount;
+
   /// Opens the input .jack file and gets ready to tokenize it
-  CompilationEngine(this.tokenizer, File outputFile)
-      : _raFile = outputFile.openSync(mode: FileMode.write),
-        _currentToken = tokenizer.advance();
+  CompilationEngine(this.tokenizer, String outputFile)
+      : _currentToken = tokenizer.advance(),
+        writer = VMWriter(outputFile);
 
   @override
   void compileClass() {
+    _verifyToken('class');
+    _currentClassName = _currentToken;
+
     _classTable.reset();
     _subroutineTable.reset();
 
-    _writeLn('<class>');
-    _process('class');
-    _currentClassName = _currentToken;
-    _processIdentifier(isDeclaration: true);
-    _process('{');
+    _advanceTokenBeyondIdentifier();
+    _verifyToken('{');
 
     do {
       compileClassVarDec();
@@ -105,9 +112,9 @@ class CompilationEngine implements ICompilationEngine {
       compileSubroutine();
     } while (
         _selectTokenToProcess(['constructor', 'function', 'method']) != null);
-    _process('}', advanceToken: false);
-    _writeLn('</class>');
-    _raFile.closeSync();
+
+    _verifyToken('}', advanceToken: false);
+    writer.close();
   }
 
   @override
@@ -117,122 +124,186 @@ class CompilationEngine implements ICompilationEngine {
       return;
     }
 
-    _writeLn('<classVarDec>');
     _processVarDec(tokenToProcess, VarScope.clazz);
-    _writeLn('</classVarDec>');
   }
 
   @override
   void compileDo() {
-    _writeLn('<doStatement>');
-    _process('do');
-    _compileTerm();
-    _process(';');
-    _writeLn('</doStatement>');
+    _verifyToken('do');
+    compileExpression();
+    // Calling a subroutine above will have pushed a value to the stack, so
+    // we want to discard it.
+    writer.writePop(MemorySegment.temp, 0);
+    _verifyToken(';');
   }
 
   @override
   void compileExpression() {
-    _writeLn('<expression>');
+    compileTerm();
 
-    var count = 0;
-
-    do {
-      if (count > 0 && operators.containsKey(_currentToken)) {
-        _process(_currentToken);
-      }
+    while (operators.containsKey(_currentToken)) {
+      final operator = _currentToken;
+      _advanceToken();
       compileTerm();
-      count++;
-    } while (operators.containsKey(_currentToken));
 
-    _writeLn('</expression>');
+      switch (operator) {
+        case '+':
+          writer.writeArithmetic(Command.add);
+          break;
+        case '-':
+          writer.writeArithmetic(Command.sub);
+          break;
+        case '*':
+          writer.writeCall('Math.multiply', 2);
+          break;
+        case '/':
+          writer.writeCall('Math.divide', 2);
+          break;
+        case '&':
+          writer.writeArithmetic(Command.and);
+          break;
+        case '|':
+          writer.writeArithmetic(Command.or);
+          break;
+        case '<':
+          writer.writeArithmetic(Command.lt);
+          break;
+        case '>':
+          writer.writeArithmetic(Command.gt);
+          break;
+        case '=':
+          writer.writeArithmetic(Command.eq);
+          break;
+        default:
+          throw UnimplementedError('Operator "$operator" not implemented');
+      }
+    }
   }
 
   @override
   int compileExpressionList() {
     var count = 0;
-    _writeLn('<expressionList>');
     if (_currentToken != ')') {
       do {
         if (_currentToken == ',') {
-          _process(',');
+          _advanceToken();
         }
         compileExpression();
+        count++;
       } while (_currentToken == ',');
     }
-    _writeLn('</expressionList>');
     return count;
   }
 
   @override
   void compileIf() {
-    _writeLn('<ifStatement>');
-    _process('if');
-    _process('(');
+    _verifyToken('if');
+    _verifyToken('(');
+    // Evaluate the if condition and negate the value
     compileExpression();
-    _process(')');
-    _process('{');
+    writer.writeArithmetic(Command.not);
+
+    // Generate the labels we will use to implement branching logic
+    final suffix = labelSuffix();
+    final L1 = 'IF_START_$suffix';
+    final L2 = 'IF_END_$suffix';
+
+    // Conditionally jump to L1
+    writer.writeIf(L1);
+
+    _verifyToken(')');
+    _verifyToken('{');
+
     compileStatements();
-    _process('}');
+    _verifyToken('}');
+
+    // If we haven't skipped to L1, we've evaluated the if block and skip to end
+    writer.writeGoto(L2);
+
+    // We jump here and conditionally compile the else statement if present.
+    writer.writeLabel(L1);
 
     if (_currentToken == 'else') {
-      _process('else');
-      _process('{');
+      _verifyToken('else');
+      _verifyToken('{');
       compileStatements();
-      _process('}');
+      _verifyToken('}');
     }
-    _writeLn('</ifStatement>');
+
+    writer.writeLabel(L2);
   }
 
   @override
   void compileLet() {
-    _writeLn('<letStatement>');
-    _process('let');
-    _processIdentifier(isDeclaration: false);
-    if (_currentToken == '[') {
-      _process('[');
+    _verifyToken('let');
+    final varInfo = _getVarOrThrow(_currentToken);
+    _advanceTokenBeyondIdentifier();
+
+    final isArrayAssignment = _currentToken == '[';
+
+    if (isArrayAssignment) {
+      _verifyToken('[');
+      writer.writePush(_segmentFromKind(varInfo.kind), varInfo.index);
       compileExpression();
-      _process(']');
+      _verifyToken(']');
+      writer.writeArithmetic(Command.add);
     }
-    _process('=');
+
+    _verifyToken('=');
     compileExpression();
-    _process(';');
-    _writeLn('</letStatement>');
+
+    if (isArrayAssignment) {
+      // Put the value of expression2 in let arr[expression1] = expression2
+      // in temp 0
+      writer.writePop(MemorySegment.temp, 0);
+      // Now put the value (arr + expression1) in pointer 1, which will store
+      // the target address in the THAT pointer, RAM[4]
+      writer.writePop(MemorySegment.pointer, 1);
+      writer.writePush(MemorySegment.temp, 0);
+      writer.writePop(MemorySegment.that, 0);
+    } else {
+      // We aren't assigning an array value, so we can just assign to the
+      // original identifier.
+      writer.writePop(_segmentFromKind(varInfo.kind), varInfo.index);
+    }
+
+    _verifyToken(';');
   }
 
   @override
   void compileParameterList() {
-    _writeLn('<parameterList>');
     while (_currentToken != ')') {
       final type = _getTypeOrThrow();
-      _process(type);
+      _advanceToken();
 
       final argName = _currentToken;
       _subroutineTable.add(argName, type, 'arg');
 
-      _processIdentifier(isDeclaration: true);
+      _advanceTokenBeyondIdentifier();
 
       if (_currentToken == ',') {
-        _process(',');
+        _verifyToken(',');
       }
     }
-    _writeLn('</parameterList>');
   }
 
   @override
   void compileReturn() {
-    _writeLn('<returnStatement>');
-    _process('return');
+    _verifyToken('return');
+
     if (_currentToken != ';') {
       compileExpression();
+    } else {
+      // If we have a void return, we need to push a default value to fulfill
+      // the function call and return contract.
+      writer.writePush(MemorySegment.constant, 0);
     }
-    _process(';');
-    _writeLn('</returnStatement>');
+    _verifyToken(';');
+    writer.writeReturn();
   }
 
   @override
   void compileStatements() {
-    _writeLn('<statements>');
     final statementTokens = ['let', 'if', 'while', 'do', 'return'];
 
     var tokenToProcess = _selectTokenToProcess(statementTokens);
@@ -256,7 +327,6 @@ class CompilationEngine implements ICompilationEngine {
       }
       tokenToProcess = _selectTokenToProcess(statementTokens);
     }
-    _writeLn('</statements>');
   }
 
   @override
@@ -269,230 +339,287 @@ class CompilationEngine implements ICompilationEngine {
       return;
     }
 
-    _process(subroutineKind);
     // Provide the "this" argument if it is a method.
     if ('method' == subroutineKind) {
       _subroutineTable.add('this', _currentClassName!, 'arg');
     }
 
-    _writeLn('<subroutineDec>');
+    // Advance past subroutine kind.
+    _advanceToken();
 
-    if (_currentToken == 'void') {
-      _process(_currentToken);
-    } else {
-      _processType();
+    // Swallow return type for now.
+    String returnType = _currentToken;
+    if (returnType != 'void') {
+      returnType = _getTypeOrThrow();
     }
+    _advanceToken();
 
     _currentSubroutineName = _currentToken;
-    _processIdentifier(isDeclaration: false);
-    _process('(');
+    _advanceTokenBeyondIdentifier();
+
+    // We need to compile the parameter list before writing the function.
+    _verifyToken('(');
     compileParameterList();
-    _process(')');
+    _verifyToken(')');
+
+    // Before generating any code, we need to compile all the var declarations
+    // so we know how many local vars the fn has.
+    _verifyToken('{');
+    while (_currentToken == 'var') {
+      compileVarDec();
+    }
+
+    // Now we can reference the symbol table and write the fn declaration
+    // with the appropriate number of local vars. This allows the compiler's
+    // backend to allocate the appropriate length of the local memory segment.
+    writer.writeFunction('$_currentClassName.$_currentSubroutineName',
+        _subroutineTable.varCount('var'));
+
+    if ('constructor' == subroutineKind) {
+      writer.writePush(MemorySegment.constant, _classTable.varCount('field'));
+      writer.writeCall('Memory.alloc', 1);
+      writer.writePop(MemorySegment.pointer, 0);
+    }
+
+    if (subroutineKind == 'method') {
+      // If we have a method, we need to align the THIS pointer to to value of
+      // argument 0, which will contain the base address of the object on which
+      // the method was called to operate per the method calling contract.
+      writer.writePush(MemorySegment.argument, 0);
+      writer.writePop(MemorySegment.pointer, 0);
+    }
+
     compileSubroutineBody();
-    _writeLn('</subroutineDec>');
+
     _currentSubroutineName = null;
   }
 
   @override
   void compileSubroutineBody() {
-    _writeLn('<subroutineBody>');
-    _process('{');
-    while (_currentToken == 'var') {
-      compileVarDec();
-    }
     compileStatements();
-    _process('}');
-    _writeLn('</subroutineBody>');
+    _verifyToken('}');
   }
 
   // term: integerConstant | stringConstant | keywordConstant | varName |
   // varName'[' expression ']' | '(' expression ')' | (unaryOp term) | subroutineCall
   @override
   void compileTerm() {
-    _writeLn('<term>');
-    _compileTerm();
-    _writeLn('</term>');
-  }
-
-  void _compileTerm() {
     final token = _currentToken;
     final type = tokenizer.tokenType();
 
-    // If we have a keyword, make sure it is a keyword constant.
-    if (type == TokenType.keyword && !keywordConstants.containsKey(token)) {
-      throw InvalidKeywordConstantException(token);
+    if (type == TokenType.intConst) {
+      writer.writePush(MemorySegment.constant, int.parse(token));
+      _advanceToken();
+      return;
     }
 
-    // Process top-level types that don't require any additional logic.
-    if (type == TokenType.intConst ||
-        type == TokenType.stringConst ||
-        type == TokenType.keyword) {
-      _process(token);
+    if (type == TokenType.stringConst) {
+      final length = token.length;
+      // Create the String using the OS.
+      writer.writePush(MemorySegment.constant, length);
+      writer.writeCall('String.new', 1);
+
+      // Push each char onto the stack and append it to the string.
+      for (var i = 0; i < length; i++) {
+        writer.writePush(MemorySegment.constant, token.codeUnitAt(i));
+        writer.writeCall('String.appendChar', 2);
+      }
+      _advanceToken();
+      return;
+    }
+
+    if (type == TokenType.keyword) {
+      if (token == 'null' || token == 'false') {
+        writer.writePush(MemorySegment.constant, 0);
+      } else if (token == 'true') {
+        writer.writePush(MemorySegment.constant, 1);
+        writer.writeArithmetic(Command.neg);
+      } else if (token == 'this') {
+        writer.writePush(MemorySegment.pointer, 0);
+      } else {
+        throw InvalidKeywordConstantException(token);
+      }
+      _advanceToken();
       return;
     }
 
     if (unaryOp.containsKey(token)) {
-      _process(token);
+      _advanceToken();
       compileTerm();
+
+      if (token == '-') {
+        writer.writeArithmetic(Command.neg);
+      } else if (token == '~') {
+        writer.writeArithmetic(Command.not);
+      }
       return;
     }
 
     if (token == '(') {
-      _process('(');
+      _verifyToken('(');
       compileExpression();
-      _process(')');
+      _verifyToken(')');
       return;
     }
 
     if (type == TokenType.identifier) {
-      _processIdentifier(isDeclaration: false);
+      final identifier = _currentToken;
+      _advanceTokenBeyondIdentifier();
       final nextToken = _currentToken;
 
       switch (nextToken) {
         case '[':
-          _process('[');
+          _verifyToken('[');
+          // For the expression arr[expression], we want to
+          // push arr, push expression, add
+          // This will give us the value (arr + expression), which is the
+          // memory address we are targeting.
+          final info = _getVarOrThrow(identifier);
+          writer.writePush(_segmentFromKind(info.kind), info.index);
           compileExpression();
-          _process(']');
+          _verifyToken(']');
+          writer.writeArithmetic(Command.add);
+          writer.writePop(MemorySegment.pointer, 1);
+          writer.writePush(MemorySegment.that, 0);
           break;
         case '(':
-          _process(nextToken);
-          compileExpressionList();
-          _process(')');
-          break;
         case '.':
-          _process(nextToken);
-          _processIdentifier(isDeclaration: false);
-          _process('(');
-          compileExpressionList();
-          _process(')');
+          // First determine if we have a method or function/constructor call.
+          final varInfo =
+              _subroutineTable.find(identifier) ?? _classTable.find(identifier);
+          final isMethod =
+              varInfo != null || identifier[0] != identifier[0].toUpperCase();
+
+          String? className;
+
+          if (isMethod) {
+            // If varInfo is defined, the call is in the form
+            // varName.methodName(exp1...) and we can push the symbol table
+            // mapping of varName. Otherwise, it is in the form
+            //  methodName(exp1...), and we push the a mapping of the current
+            // object.
+            if (varInfo != null) {
+              writer.writePush(_segmentFromKind(varInfo.kind), varInfo.index);
+            } else {
+              writer.writePush(MemorySegment.pointer, 0);
+            }
+            // If we have a method, we must note the [type] of class for when
+            // we write the fn call later.
+            className = varInfo?.type ?? _currentClassName;
+          }
+
+          String subroutineName;
+          if (nextToken == '.') {
+            // We have either varName.methodCall(...), ClassName.functionName,
+            // or ClassName.constructorName(...), so the subroutineName is the
+            // next token.
+            _advanceToken();
+            subroutineName = _currentToken;
+            _advanceTokenBeyondIdentifier();
+          } else {
+            // We have methodCall(...), so the current identifier == methodCall.
+            subroutineName = identifier;
+          }
+
+          // Compile the parameters.
+          _verifyToken('(');
+          final argCount = compileExpressionList();
+          _verifyToken(')');
+
+          writer.writeCall(
+            '${className ?? identifier}.$subroutineName',
+            // Methods push the additional "this" arg onto the stack.
+            argCount + (isMethod ? 1 : 0),
+          );
+
           break;
-        default: // Do nothing
+        default:
+          // Get the value and push it on the stack.
+          final info = _getVarOrThrow(identifier);
+          writer.writePush(_segmentFromKind(info.kind), info.index);
+          break;
       }
     }
   }
 
   @override
   void compileVarDec() {
-    _writeLn('<varDec>');
     _processVarDec('var', VarScope.subroutine);
-    _writeLn('</varDec>');
   }
 
   @override
   void compileWhile() {
-    _writeLn('<whileStatement>');
-    _process('while');
-    _process('(');
+    _verifyToken('while');
+    _verifyToken('(');
+
+    // Generate the labels we will use to implement branching logic
+    final suffix = labelSuffix();
+    final L1 = 'WHILE_START_$suffix';
+    final L2 = 'WHILE_END_$suffix';
+
+    // Write the first label to return to our test condition.
+    writer.writeLabel(L1);
+    // Push the value of the while(__expression__) onto the stack.
     compileExpression();
-    _process(')');
-    _process('{');
+    _verifyToken(')');
+    _verifyToken('{');
+
+    // NOT the value of the compiled expression on the stack so we know if we
+    // should jump over the logic between here and the next label, i.e. the
+    // end of the while statement.
+    writer.writeArithmetic(Command.not);
+
+    // If !expression
+    writer.writeIf(L2);
     compileStatements();
-    _process('}');
-    _writeLn('</whileStatement>');
+    // Return to evaluate while expression again.
+    writer.writeGoto(L1);
+
+    // Anchor our terminating label at the end.
+    writer.writeLabel(L2);
+    _verifyToken('}');
   }
 
 //******************************************************************************
 // Utilities
 //******************************************************************************
 
-  /// General process to write a token under one of the top-level types and
-  /// advance the tokenizer.
-  _process(String token,
-      {bool advanceToken = true, _IdentifierType? identifierType}) {
-    if (_currentToken == token) {
-      final tokenType = tokenizer.tokenType();
+  /// Advances tokenizer and assigns [_currentToken] to new current token.
+  void _advanceToken() {
+    _currentToken = tokenizer.advance();
+  }
 
-      String xmlOutput;
+  /// Advances tokenizer and assigns [_currentToken] to new current token if
+  /// current token is an identifier.
+  void _advanceTokenBeyondIdentifier() {
+    if (tokenType != TokenType.identifier) {
+      throw InvalidIdentifierException(_currentToken);
+    }
+    _advanceToken();
+  }
 
-      switch (tokenType) {
-        case TokenType.identifier:
-          if (identifierType == null) {
-            throw Exception(
-                'Must pass _IdentifierType when processing identifier "$_currentToken".');
-          }
-
-          final identifier = tokenizer.identifier();
-
-          VarInfo? info;
-          info = _subroutineTable.find(identifier);
-          info ??= _classTable.find(identifier);
-
-          if (info == null &&
-              identifier != _currentClassName &&
-              identifier != _currentSubroutineName) {
-            throw Exception(
-                'Identifier not found in symbol table and is not current class "$identifier"');
-          }
-
-          final category = info?.kind ??
-              (identifier == _currentClassName ? 'class' : 'subroutine');
-
-          // final isSubroutineVar = _subroutineTable.indexOf(identifier) > -1;
-          // final isClassRoutineVar = _classTable.indexOf(identifier) > -1;
-          final b = StringBuffer();
-          b.writeln('<identifier>');
-          b.writeln('<name> $identifier </name>');
-          // field, static, var, arg, class, or subroutine
-          b.writeln('<category> $category </category>');
-          // Only if this is not a class or subroutine
-          if (info != null) {
-            b.writeln('<index> ${info.index} </index>');
-          }
-          // declared | used
-          b.writeln(
-              '<usage> ${identifierType == _IdentifierType.declaration ? "declaration" : "used"} </usage>');
-
-          b.writeln('</identifier>');
-
-          xmlOutput = b.toString();
-          break;
-        case TokenType.intConst:
-          xmlOutput =
-              '<integerConstant> ${tokenizer.intVal()} </integerConstant>';
-          break;
-        case TokenType.keyword:
-          // todo - we could probably have tokenizer.keyword return the value directly
-          xmlOutput = '<keyword> ${tokenizer.keyword().value()} </keyword>';
-          break;
-        case TokenType.stringConst:
-          xmlOutput =
-              '<stringConstant> ${tokenizer.stringVal()} </stringConstant>';
-          break;
-        case TokenType.symbol:
-          final xmlSymbol =
-              specialSymbols[tokenizer.symbol()] ?? tokenizer.symbol();
-          xmlOutput = '<symbol> $xmlSymbol </symbol>';
-          break;
-        default:
-          throw Exception('Unknown token type: $tokenType');
-      }
-
-      _writeLn(xmlOutput);
-    } else {
+  /// Throws if expected token doesn't match [_currentToken]. Advances
+  /// [_currentToken] when valid unless specified otherwise.
+  void _verifyToken(String token, {bool advanceToken = true}) {
+    if (_currentToken != token) {
       throw SyntaxError(token, _currentToken);
     }
 
     if (advanceToken) {
-      _currentToken = tokenizer.advance();
-    }
-  }
-
-  /// Calls the [_process] method if we have identifier, otherwise throws.
-  void _processIdentifier({required bool isDeclaration}) {
-    if (tokenType == TokenType.identifier) {
-      _process(_currentToken,
-          identifierType: isDeclaration
-              ? _IdentifierType.declaration
-              : _IdentifierType.usage);
-    } else {
-      throw InvalidIdentifierException(_currentToken);
+      _advanceToken();
     }
   }
 
   /// Processes multiple inline var declarations for class and local vars, where
-  /// [kind] is the kind of declaration, i.e. "field", "var", "static", "arg".
+  /// [kind] is the kind of declaration, i.e. "field", "var", "static".
   void _processVarDec(String kind, VarScope scope) {
-    _process(kind);
+    // Check that the kind is valid
+    final validKinds = ["field", "var", "static"];
+    if (!["field", "var", "static"].contains(kind)) {
+      throw Exception('Expected one of $validKinds but got $kind');
+    }
+
+    _advanceToken();
 
     // We need to save the type in order to
     //    1. add it to the relevant symbol table, and
@@ -503,21 +630,21 @@ class CompilationEngine implements ICompilationEngine {
     // Here, we need both the kind (field) and type (j) to add i and j to the
     // _classTable as independent entries.
     final type = _getTypeOrThrow();
-    _process(type);
+    _advanceToken();
 
     var varName = _currentToken;
     _addSymbolTableEntry(scope, varName, type, kind);
-    _processIdentifier(isDeclaration: true);
+    _advanceTokenBeyondIdentifier();
 
     // Support multiple inline var declarations, such as "field int foo, bar;"
     bool hasAdditionalVars() => _currentToken == ',';
     while (hasAdditionalVars()) {
-      _process(_currentToken);
+      _advanceToken();
       varName = _currentToken;
       _addSymbolTableEntry(scope, varName, type, kind);
-      _processIdentifier(isDeclaration: true);
+      _advanceTokenBeyondIdentifier();
     }
-    _process(';');
+    _verifyToken(';');
   }
 
   void _addSymbolTableEntry(
@@ -533,14 +660,6 @@ class CompilationEngine implements ICompilationEngine {
     }
   }
 
-  /// Processes the current type or throws an exception if  [_currentToken] is
-  /// not a valid type.
-  void _processType() {
-    _process(_getTypeOrThrow(),
-        identifierType:
-            tokenType == TokenType.identifier ? _IdentifierType.usage : null);
-  }
-
   /// Returns the [_currentToken] if is a valid type.
   String _getTypeOrThrow() {
     if (_isType()) {
@@ -550,6 +669,18 @@ class CompilationEngine implements ICompilationEngine {
     }
   }
 
+  /// Finds the [VarInfo] for a given variable name by looking first in the
+  /// subroutine symbol table, then the class table. Throws if not found.
+  VarInfo _getVarOrThrow(String varName) {
+    final varInfo = _subroutineTable.find(varName) ?? _classTable.find(varName);
+
+    if (varInfo == null) {
+      throw UndeclaredIdentifierException(varName);
+    }
+
+    return varInfo;
+  }
+
   /// A utility to determine if the [_currentToken] is a valid type.
   ///
   /// Note that if the [_currentToken] is a [TokenType.identifier], it is assumed
@@ -557,6 +688,21 @@ class CompilationEngine implements ICompilationEngine {
   bool _isType() =>
       (tokenType == TokenType.identifier) ||
       (tokenType == TokenType.keyword && types.contains(_currentToken));
+
+  MemorySegment _segmentFromKind(String kind) {
+    switch (kind) {
+      case 'static':
+        return MemorySegment.statik;
+      case 'field':
+        return MemorySegment.thiz;
+      case 'arg':
+        return MemorySegment.argument;
+      case 'var':
+        return MemorySegment.local;
+      default:
+        throw Exception('Unrecognized kind "$kind". Unable to map mem segment');
+    }
+  }
 
   /// From a list of valid tokens, returns the token to process, or null if
   /// none were valid.
@@ -569,19 +715,7 @@ class CompilationEngine implements ICompilationEngine {
 
     return null;
   }
-
-  /// Writes string to output and appends a newline.
-  void _writeLn(String str) {
-    _raFile.writeStringSync(str + '\n');
-  }
 }
 
 /// Only 2 scopes are currently supported: class and subroutine.
 enum VarScope { clazz, subroutine }
-
-/// Used when processing an identifier, to indicate whether variable is being
-/// declared or used.
-enum _IdentifierType {
-  declaration,
-  usage,
-}

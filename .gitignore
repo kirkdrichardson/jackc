@@ -8,3 +8,4 @@ build/
 **.jack
 **.xml
 **.vscode
+**.vm
